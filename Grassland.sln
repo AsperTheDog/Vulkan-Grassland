@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.12.35707.178
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ChangeMe", "ChangeMe\ChangeMe.vcxproj", "{991A25A9-52E4-4046-B0E4-88D2F048DA74}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Grassland", "Grassland\Grassland.vcxproj", "{991A25A9-52E4-4046-B0E4-88D2F048DA74}"
 	ProjectSection(ProjectDependencies) = postProject
 		{0CE28944-0DB3-477F-92AC-0A080BFBAB24} = {0CE28944-0DB3-477F-92AC-0A080BFBAB24}
 		{70D6BCCF-5646-4B7C-B472-32183D976763} = {70D6BCCF-5646-4B7C-B472-32183D976763}
