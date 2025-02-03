@@ -1,0 +1,6 @@
+[submodule "VkPlayground/submodule"]
+	path = VkPlayground/submodule
+	url = https://github.com/AsperTheDog/VkPlayground
+[submodule "ImGui/submodule"]
+	path = ImGui/submodule
+	url = https://github.com/ocornut/imgui
