@@ -139,6 +139,7 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="submodule\include\utils\allocators.hpp" />
     <ClInclude Include="submodule\include\ext\vulkan_acceleration_structure.hpp" />
     <ClInclude Include="submodule\include\ext\vulkan_deferred_host_operation.hpp" />
     <ClInclude Include="submodule\include\ext\vulkan_extension_management.hpp" />
@@ -148,6 +149,7 @@
     <ClInclude Include="submodule\include\utils\identifiable.hpp" />
     <ClInclude Include="submodule\include\utils\logger.hpp" />
     <ClInclude Include="submodule\include\utils\signal.hpp" />
+    <ClInclude Include="submodule\include\utils\string_utils.hpp" />
     <ClInclude Include="submodule\include\vulkan_binding.hpp" />
     <ClInclude Include="submodule\include\vulkan_buffer.hpp" />
     <ClInclude Include="submodule\include\vulkan_command_buffer.hpp" />
@@ -165,6 +167,7 @@
     <ClInclude Include="submodule\include\vulkan_sync.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="submodule\src\allocators.cpp" />
     <ClCompile Include="submodule\src\ext\vulkan_acceleration_structure.cpp" />
     <ClCompile Include="submodule\src\ext\vulkan_deffered_host_operation.cpp" />
     <ClCompile Include="submodule\src\ext\vulkan_extension_management.cpp" />

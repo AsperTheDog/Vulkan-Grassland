@@ -87,6 +87,12 @@
     <ClInclude Include="submodule\include\vulkan_sync.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="submodule\include\utils\allocators.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="submodule\include\utils\string_utils.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="submodule\src\ext\vulkan_acceleration_structure.cpp">
@@ -153,6 +159,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="submodule\src\vulkan_sync.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="submodule\src\allocators.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

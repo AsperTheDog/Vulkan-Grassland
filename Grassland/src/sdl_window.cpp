@@ -48,15 +48,17 @@ bool SDLWindow::shouldClose() const
     return SDL_QuitRequested();
 }
 
-std::vector<const char*> SDLWindow::getRequiredVulkanExtensions() const
+uint32_t SDLWindow::getRequiredVulkanExtensionCount() const
 {
     uint32_t extensionCount;
     SDL_Vulkan_GetInstanceExtensions(m_SDLHandle, &extensionCount, nullptr);
+    return extensionCount;
+}
 
-    std::vector<const char*> extensions(extensionCount);
-    SDL_Vulkan_GetInstanceExtensions(m_SDLHandle, &extensionCount, extensions.data());
-
-    return extensions;
+void SDLWindow::getRequiredVulkanExtensions(const char* p_Container[]) const
+{
+    uint32_t extensionCount = getRequiredVulkanExtensionCount();
+    SDL_Vulkan_GetInstanceExtensions(m_SDLHandle, &extensionCount, p_Container);
 }
 
 SDLWindow::WindowSize SDLWindow::getSize() const

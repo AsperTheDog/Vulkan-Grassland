@@ -3,30 +3,38 @@
 #include <array>
 
 #include <imgui.h>
+#include <iostream>
 #include <backends/imgui_impl_vulkan.h>
 
 #include "vertex.hpp"
+#include "vulkan_binding.hpp"
+#include "vulkan_buffer.hpp"
 
-#include "vulkan_context.hpp"
+#include "vulkan_device.hpp"
+#include "vulkan_pipeline.hpp"
+#include "vulkan_render_pass.hpp"
+#include "vulkan_sync.hpp"
 #include "ext/vulkan_swapchain.hpp"
+#include "vulkan_descriptors.hpp"
 #include "utils/logger.hpp"
 
 constexpr std::array<Vertex, 3> vertices = {
-    Vertex{ { 0.0f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-    Vertex{ { 0.5f, 0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-    Vertex{ { -0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
+    Vertex{ { 0.0f, -0.5f, 0.0f }, { 255, 0, 0 } },
+    Vertex{ { 0.5f, 0.5f, 0.0f },  { 0, 255, 0 } },
+    Vertex{ { -0.5f, 0.5f, 0.0f }, { 0, 0, 255 } }
 };
 
 constexpr std::array<uint16_t, 3> indices = { 0, 1, 2 };
 
 static VulkanGPU chooseCorrectGPU()
 {
-    const std::vector<VulkanGPU> l_GPUs = VulkanContext::getGPUs();
-    for (auto& l_GPU : l_GPUs)
+    std::array<VulkanGPU, 10> l_GPUs;
+    VulkanContext::getGPUs(l_GPUs.data());
+    for (uint32_t i = 0; i < VulkanContext::getGPUCount(); i++)
     {
-        if (l_GPU.getProperties().deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        if (l_GPUs[i].getProperties().deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
         {
-            return l_GPU;
+            return l_GPUs[i];
         }
     }
 
@@ -37,13 +45,20 @@ Engine::Engine() : m_Window("Vulkan", 1920, 1080)
 {
     // Vulkan Instance
     Logger::setRootContext("Engine init");
+
+    std::vector<const char*> l_RequiredExtensions{ m_Window.getRequiredVulkanExtensionCount() };
+    m_Window.getRequiredVulkanExtensions(l_RequiredExtensions.data());
 #ifndef _DEBUG
     Logger::setLevels(Logger::WARN | Logger::ERR);
-    VulkanContext::init(VK_API_VERSION_1_3, false, false, m_window.getRequiredVulkanExtensions());
+    VulkanContext::init(VK_API_VERSION_1_3, false, false, l_RequiredExtensions);
 #else
     Logger::setLevels(Logger::ALL);
-    VulkanContext::init(VK_API_VERSION_1_3, true, false, m_Window.getRequiredVulkanExtensions());
+    VulkanContext::init(VK_API_VERSION_1_3, true, false, l_RequiredExtensions);
 #endif
+
+    VulkanContext::initializeTransientMemory(1LL * 1024);
+    VulkanContext::initializeArenaMemory(1LL * 1024 * 1024);
+
     // Vulkan Surface
     m_Window.createSurface(VulkanContext::getHandle());
 
@@ -90,13 +105,13 @@ Engine::Engine() : m_Window("Vulkan", 1920, 1080)
 
     // Vertex Buffer
     l_Device.configureStagingBuffer(5LL * 1024 * 1024, m_TransferQueuePos);
-    m_VertexBufferID = l_Device.createBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    m_VertexBufferID = l_Device.createBuffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_TransferQueuePos.familyIndex);
     VulkanBuffer& l_VertexBuffer = l_Device.getBuffer(m_VertexBufferID);
     l_VertexBuffer.allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
     l_Device.dumpDataIntoBuffer(m_VertexBufferID, reinterpret_cast<const uint8_t*>(vertices.data()), sizeof(vertices), 0);
 
     // Index Buffer
-    m_IndexBufferID = l_Device.createBuffer(sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    m_IndexBufferID = l_Device.createBuffer(sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_TransferQueuePos.familyIndex);
     VulkanBuffer& l_IndexBuffer = l_Device.getBuffer(m_IndexBufferID);
     l_IndexBuffer.allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
     l_Device.dumpDataIntoBuffer(m_IndexBufferID, reinterpret_cast<const uint8_t*>(indices.data()), sizeof(indices), 0);
@@ -110,7 +125,7 @@ Engine::Engine() : m_Window("Vulkan", 1920, 1080)
     for (uint32_t i = 0; i < l_Swapchain.getImageCount(); i++)
     {
         VkImageView l_Color = *l_Swapchain.getImage(i).getImageView(l_Swapchain.getImageView(i));
-        const std::vector<VkImageView> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
+        const std::array<VkImageView, 2> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
         m_FramebufferIDs[i] = VulkanContext::getDevice(m_DeviceID).createFramebuffer({ l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, m_RenderPassID, l_Attachments);
     }
 
@@ -179,7 +194,7 @@ void Engine::run()
         {
             const VkExtent2D& extent = l_SwapchainExt->getSwapchain(m_SwapchainID).getExtent();
 
-            std::vector<VkClearValue> clearValues{ 2 };
+            std::array<VkClearValue, 2> clearValues;
             clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
             clearValues[1].depthStencil = { 1.0f, 0 };
 
@@ -212,9 +227,20 @@ void Engine::run()
             l_GraphicsBuffer.endRecording();
         }
 
-        l_GraphicsBuffer.submit(l_GraphicsQueue, { {l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT} }, { m_RenderFinishedSemaphoreID }, m_InFlightFenceID);
+        // Submit
+        {
+            const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = {{{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}};
+            const std::array<ResourceID, 1> l_SignalSemaphores = {m_RenderFinishedSemaphoreID};
+            l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
+        }
 
-        l_Swapchain.present(m_PresentQueuePos, {m_RenderFinishedSemaphoreID});
+        // Present
+        {
+            std::array<ResourceID, 1> l_Semaphores = { {m_RenderFinishedSemaphoreID} };
+            l_Swapchain.present(m_PresentQueuePos, l_Semaphores);
+        }
+
+        VulkanContext::resetTransMemory();
     }
 }
 
@@ -235,7 +261,8 @@ void Engine::createRenderPasses()
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     l_Builder.addAttachment(l_DepthAttachment);
 
-    l_Builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, { {COLOR, 0}, {DEPTH_STENCIL, 1} }, 0);
+    const std::array<VulkanRenderPassBuilder::AttachmentReference, 2> l_ColorReferences = {{{COLOR, 0}, {DEPTH_STENCIL, 1}}};
+    l_Builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, l_ColorReferences, 0);
 
     m_RenderPassID = VulkanContext::getDevice(m_DeviceID).createRenderPass(l_Builder, 0);
     Logger::popContext();
@@ -256,7 +283,9 @@ void Engine::createPipelines()
 
     VulkanBinding l_Binding{0, VK_VERTEX_INPUT_RATE_VERTEX, sizeof(Vertex)};
 	l_Binding.addAttribDescription(VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position));
-	l_Binding.addAttribDescription(VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color));
+	l_Binding.addAttribDescription(VK_FORMAT_R8G8B8_UNORM, offsetof(Vertex, color));
+
+    std::array<VkDynamicState, 2> l_DynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
 	VulkanPipelineBuilder l_Builder{ m_DeviceID };
     l_Builder.addVertexBinding(l_Binding);
@@ -267,7 +296,7 @@ void Engine::createPipelines()
 	l_Builder.setDepthStencilState(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS);
 	l_Builder.addColorBlendAttachment(l_ColorBlendAttachment);
 	l_Builder.setColorBlendState(VK_FALSE, VK_LOGIC_OP_COPY, {0.0f, 0.0f, 0.0f, 0.0f});
-	l_Builder.setDynamicState({ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR });
+	l_Builder.setDynamicState(l_DynamicStates);
     l_Builder.addShaderStage(l_VertexShader);
     l_Builder.addShaderStage(l_FragmentShader);
 	m_GraphicsPipelineID = l_Device.createPipeline(l_Builder, l_Layout, m_RenderPassID, 0);
@@ -288,7 +317,7 @@ void Engine::recreateSwapchain(const VkExtent2D p_NewSize)
     for (uint32_t i = 0; i < l_Swapchain.getImageCount(); ++i)
     {
         const VkImageView l_Color = *l_Swapchain.getImage(i).getImageView(l_Swapchain.getImageView(i));
-        const std::vector<VkImageView> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
+        const std::array<VkImageView, 2> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
         m_FramebufferIDs[i] = VulkanContext::getDevice(m_DeviceID).createFramebuffer({ l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, m_RenderPassID, l_Attachments);
     }
     Logger::popContext();
@@ -304,8 +333,8 @@ void Engine::initImgui() const
 
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
 
-    const std::vector<VkDescriptorPoolSize> l_PoolSizes =
-    {
+    const std::array<VkDescriptorPoolSize, 11> l_PoolSizes =
+    {{
         { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
         { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
@@ -317,7 +346,7 @@ void Engine::initImgui() const
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
         { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-    };
+    }};
     const uint32_t l_ImguiPoolID = l_Device.createDescriptorPool(l_PoolSizes, 1000U * static_cast<uint32_t>(l_PoolSizes.size()), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(l_Device);

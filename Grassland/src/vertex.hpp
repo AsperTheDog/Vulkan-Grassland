@@ -5,5 +5,5 @@
 struct Vertex
 {
     glm::vec3 position;
-    glm::vec3 color;
+    glm::u8vec3 color;
 };
