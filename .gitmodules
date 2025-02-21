@@ -4,3 +4,6 @@
 [submodule "ImGui/submodule"]
 	path = ImGui/submodule
 	url = https://github.com/ocornut/imgui
+[submodule "vendor/stb"]
+	path = vendor/stb
+	url = https://github.com/nothings/stb
