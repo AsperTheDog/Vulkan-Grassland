@@ -36,6 +36,7 @@ public:
 	void keyReleased(uint32_t key);
 	void updateEvents(float delta);
     void setMouseCaptured(bool captured);
+    void mouseScrolled(int32_t y);
 
 private:
 	void calculateRightVector();

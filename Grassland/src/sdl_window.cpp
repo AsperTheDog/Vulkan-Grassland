@@ -99,6 +99,9 @@ void SDLWindow::pollEvents()
         case SDL_KEYUP:
             m_KeyReleased.emit(event.key.keysym.sym);
             break;
+        case SDL_MOUSEWHEEL:
+            m_MouseScrolled.emit(event.wheel.y);
+            break;
         }
     }
     const uint64_t now = SDL_GetTicks64();
@@ -187,4 +190,9 @@ Signal<float>& SDLWindow::getEventsProcessedSignal()
 Signal<bool>& SDLWindow::getMouseCaptureChangedSignal()
 {
     return m_MouseCaptureChanged;
+}
+
+Signal<int32_t>& SDLWindow::getMouseScrolledSignal()
+{
+    return m_MouseScrolled;
 }

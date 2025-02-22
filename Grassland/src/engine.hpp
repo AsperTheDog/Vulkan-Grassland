@@ -8,15 +8,16 @@
 
 struct PushConstantData
 {
-    alignas(4)  uint32_t gridSize = 4;
+    alignas(4)  uint32_t gridSize = 100;
     alignas(4)  float patchSize = 1.f;
     alignas(4)  float minTessLevel = 1.f;
     alignas(4)  float maxTessLevel = 32.f;
     alignas(4)  float tessFactor = 0.014f;
     alignas(4)  float tessSlope = 0.07f;
     alignas(16) glm::vec3 cameraPos;
-    alignas(4)  float heightScale = 1.f;
+    alignas(4)  float heightScale = 10.f;
     alignas(16) glm::mat4 mvp;
+    alignas(4)  float uvOffsetScale = 0.002f;
 
     static uint32_t getVertexShaderOffset() { return 0; }
     static uint32_t getTessellationControlShaderOffset() { return offsetof(PushConstantData, minTessLevel); }
@@ -80,6 +81,7 @@ private:
     ResourceID m_TessellationDescriptorSetID = UINT32_MAX;
 
     PushConstantData m_PushConstants;
+    float m_UVOffset = 0.005f;
 
 private:
     void initImgui() const;

@@ -135,6 +135,7 @@ Engine::Engine()
     m_Window.getEventsProcessedSignal().connect(&m_Camera, &Camera::updateEvents);
     m_Window.getMouseCaptureChangedSignal().connect(&m_Camera, &Camera::setMouseCaptured);
     m_Window.getResizedSignal().connect(this, &Engine::recreateSwapchain);
+    m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
     initImgui();
 
@@ -271,7 +272,7 @@ void Engine::createPipelines()
     l_TessellationBuilder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_PATCH_LIST, VK_FALSE);
     l_TessellationBuilder.setTessellationState(4);
     l_TessellationBuilder.setViewportState(1, 1);
-    l_TessellationBuilder.setRasterizationState(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    l_TessellationBuilder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE);
     l_TessellationBuilder.setMultisampleState(VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f);
     l_TessellationBuilder.setDepthStencilState(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS);
     l_TessellationBuilder.addColorBlendAttachment(l_ColorBlendAttachment);
@@ -355,6 +356,9 @@ void Engine::render(VulkanCommandBuffer& p_Buffer, const uint32_t l_ImageIndex, 
 {
     m_PushConstants.cameraPos = m_Camera.getPosition();
     m_PushConstants.mvp = m_Camera.getVPMatrix();
+
+    const float l_Extent = m_PushConstants.patchSize * static_cast<float>(m_PushConstants.gridSize);
+    m_PushConstants.uvOffsetScale = (m_UVOffset / 100.f) * l_Extent; 
 
     const VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(l_Device);
@@ -474,10 +478,12 @@ void Engine::drawImgui()
         ImGui::Begin("Controls");
 
         ImGui::DragFloat("Height scale", &m_PushConstants.heightScale, 0.1f);
+        ImGui::DragFloat("UV Offset Scale", &m_UVOffset, 0.001f, 0.001f, 1.f);
         ImGui::Separator();
         int l_GridSize = m_PushConstants.gridSize;
         ImGui::DragInt("Grid size", &l_GridSize, 1, 1, 100);
         m_PushConstants.gridSize = static_cast<uint32_t>(l_GridSize);
+        ImGui::DragFloat("Patch size", &m_PushConstants.patchSize, 0.1f, 1.f, 100.f);
         ImGui::Separator();
         ImGui::DragFloat("Tessellation min", &m_PushConstants.minTessLevel, 0.1f, 1.f, 64.f);
         if (m_PushConstants.minTessLevel > m_PushConstants.maxTessLevel)

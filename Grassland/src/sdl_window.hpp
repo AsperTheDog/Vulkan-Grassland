@@ -54,6 +54,7 @@ public:
 	[[nodiscard]] Signal<uint32_t>& getKeyReleasedSignal();
 	[[nodiscard]] Signal<float>& getEventsProcessedSignal();
     [[nodiscard]] Signal<bool>& getMouseCaptureChangedSignal();
+    [[nodiscard]] Signal<int32_t>& getMouseScrolledSignal();
 
 private:
 
@@ -69,6 +70,7 @@ private:
 	Signal<uint32_t> m_KeyReleased;         // key, isMouseCaptured
 	Signal<float> m_EventsProcessed;        // delta
     Signal<bool> m_MouseCaptureChanged;     // isMouseCaptured
+    Signal<int32_t> m_MouseScrolled;        // y
 
 	float m_PrevDelta = 0.f;
 	float m_Delta = 0.f;
@@ -76,7 +78,7 @@ private:
 	bool m_MouseCaptured = false;
     bool m_Minimized = false;
 
-	friend class Surface;
+    friend class Surface;
 	friend class VulkanGPU;
 };
 

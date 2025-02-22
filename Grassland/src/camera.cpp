@@ -1,6 +1,7 @@
 #include "camera.hpp"
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include <algorithm>
 #include <glm/gtx/transform.hpp>
 
 #include <SDL2/SDL_keycode.h>
@@ -228,4 +229,11 @@ void Camera::calculateRightVector()
 void Camera::setMouseCaptured(const bool captured)
 {
     m_isMouseCaptured = captured;
+}
+
+void Camera::mouseScrolled(int32_t y)
+{
+    // Change moving speed
+    m_movingSpeed += y * 0.2f;
+    m_movingSpeed = std::clamp(m_movingSpeed, 0.2f, 100.0f);
 }
