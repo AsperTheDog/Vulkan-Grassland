@@ -148,6 +148,7 @@
     <ClInclude Include="src\vertex.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\noise.comp" />
     <None Include="shaders\shader.frag" />
     <None Include="shaders\shader.tesc" />
     <None Include="shaders\shader.tese" />

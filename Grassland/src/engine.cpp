@@ -19,9 +19,6 @@
 #include "vulkan_descriptors.hpp"
 #include "utils/logger.hpp"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
 static VulkanGPU chooseCorrectGPU()
 {
     std::array<VulkanGPU, 10> l_GPUs;
@@ -76,6 +73,7 @@ Engine::Engine()
     QueueFamilySelector l_QueueFamilySelector(l_QueueStructure);
 
     const QueueFamily l_GraphicsQueueFamily = l_QueueStructure.findQueueFamily(VK_QUEUE_GRAPHICS_BIT);
+    const QueueFamily l_ComputeQueueFamily = l_QueueStructure.findQueueFamily(VK_QUEUE_COMPUTE_BIT);
     const QueueFamily l_PresentQueueFamily = l_QueueStructure.findPresentQueueFamily(m_Window.getSurface());
     const QueueFamily l_TransferQueueFamily = l_QueueStructure.findQueueFamily(VK_QUEUE_TRANSFER_BIT);
 
@@ -84,6 +82,7 @@ Engine::Engine()
     l_Selector.selectQueueFamily(l_GraphicsQueueFamily, QueueFamilyTypeBits::GRAPHICS);
     l_Selector.selectQueueFamily(l_PresentQueueFamily, QueueFamilyTypeBits::PRESENT);
     m_GraphicsQueuePos = l_Selector.getOrAddQueue(l_GraphicsQueueFamily, 1.0);
+    m_ComputeQueuePos = l_Selector.getOrAddQueue(l_ComputeQueueFamily, 1.0);
     m_PresentQueuePos = l_Selector.getOrAddQueue(l_PresentQueueFamily, 1.0);
     m_TransferQueuePos = l_Selector.addQueue(l_TransferQueueFamily, 1.0);
 
@@ -102,6 +101,13 @@ Engine::Engine()
     l_Device.configureOneTimeQueue(m_TransferQueuePos);
     l_Device.initializeCommandPool(l_GraphicsQueueFamily, 0, true);
     m_GraphicsCmdBufferID = l_Device.createCommandBuffer(l_GraphicsQueueFamily, 0, false);
+    if (m_GraphicsQueuePos != m_ComputeQueuePos)
+        m_ComputeCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
+    else
+    {
+        m_ComputeCmdBufferID = m_GraphicsCmdBufferID;
+        m_UsingSharedCmdBuffer = true;
+    }
 
     // Depth Buffer
     m_DepthBuffer = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_D32_SFLOAT, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0);
@@ -111,8 +117,15 @@ Engine::Engine()
 
     l_Device.configureStagingBuffer(100LL * 1024 * 1024, m_TransferQueuePos);
 
+    //Descriptor pool
+    std::array<VkDescriptorPoolSize, 2> l_PoolSizes = {
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
+    };
+    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 2, 0);
+
     // Renderpass and pipelines
-    createHeightmapDescriptor();
+    createHeightmapDescriptor(512, 512);
     createRenderPasses();
     createPipelines();
 
@@ -128,6 +141,8 @@ Engine::Engine()
     // Sync objects
     m_RenderFinishedSemaphoreID = l_Device.createSemaphore();
     m_InFlightFenceID = l_Device.createFence(true);
+    if (m_UsingSharedCmdBuffer)
+        m_ComputeFinishedSemaphoreID = l_Device.createSemaphore();
 
     m_Window.getMouseMovedSignal().connect(&m_Camera, &Camera::mouseMoved);
     m_Window.getKeyPressedSignal().connect(&m_Camera, &Camera::keyPressed);
@@ -195,15 +210,28 @@ void Engine::run()
 
         // Record
         {
-            l_GraphicsBuffer.reset();
-            render(l_GraphicsBuffer, l_ImageIndex, l_ImguiDrawData);
+            const bool l_RenderedNoise = renderNoise();
+            render(l_ImageIndex, l_ImguiDrawData, l_RenderedNoise);
         }
 
         // Submit
         {
-            const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = {{{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}}};
-            const std::array<ResourceID, 1> l_SignalSemaphores = {m_RenderFinishedSemaphoreID};
-            l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
+            const std::array<ResourceID, 1> l_SignalSemaphores = { m_RenderFinishedSemaphoreID };
+            if (m_UsingSharedCmdBuffer)
+            {
+                const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = {
+                    VulkanCommandBuffer::WaitSemaphoreData{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}
+                };
+                l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
+            }
+            else
+            {
+                const std::array<VulkanCommandBuffer::WaitSemaphoreData, 2> l_WaitSemaphores = {
+                    VulkanCommandBuffer::WaitSemaphoreData{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT},
+                    VulkanCommandBuffer::WaitSemaphoreData{m_ComputeFinishedSemaphoreID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT}
+                };
+                l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
+            }
         }
 
         // Present
@@ -236,6 +264,15 @@ void Engine::createRenderPasses()
     const std::array<VulkanRenderPassBuilder::AttachmentReference, 2> l_ColorReferences = {{{COLOR, 0}, {DEPTH_STENCIL, 1}}};
     l_Builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, l_ColorReferences, 0);
 
+    VkSubpassDependency l_Dependency{};
+    l_Dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    l_Dependency.dstSubpass = 0;
+    l_Dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    l_Dependency.srcAccessMask = 0;
+    l_Dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    l_Dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    l_Builder.addDependency(l_Dependency);
+
     m_RenderPassID = VulkanContext::getDevice(m_DeviceID).createRenderPass(l_Builder, 0);
     Logger::popContext();
 }
@@ -244,10 +281,11 @@ void Engine::createPipelines()
 {
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
 
-    std::array<VkPushConstantRange, 3> l_PushConstantRanges;
+    std::array<VkPushConstantRange, 4> l_PushConstantRanges;
     l_PushConstantRanges[0] = { VK_SHADER_STAGE_VERTEX_BIT, PushConstantData::getVertexShaderOffset(), PushConstantData::getVertexShaderSize() };
     l_PushConstantRanges[1] = { VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, PushConstantData::getTessellationControlShaderOffset(), PushConstantData::getTessellationControlShaderSize() };
     l_PushConstantRanges[2] = { VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, PushConstantData::getTessellationEvaluationShaderOffset(), PushConstantData::getTessellationEvaluationShaderSize() };
+    l_PushConstantRanges[3] = { VK_SHADER_STAGE_FRAGMENT_BIT, PushConstantData::getFragmentShaderOffset(), PushConstantData::getFragmentShaderSize() };
     std::array<ResourceID, 1> l_DescriptorSetLayouts = { m_TessellationDescriptorSetLayoutID };
     m_TessellationPipelineLayoutID = l_Device.createPipelineLayout(l_DescriptorSetLayouts, l_PushConstantRanges);
 
@@ -284,53 +322,50 @@ void Engine::createPipelines()
     l_TessellationBuilder.addShaderStage(tessellationEvaluationShaderID, "main");
 
     m_TessellationPipelineID = l_Device.createPipeline(l_TessellationBuilder, m_TessellationPipelineLayoutID, m_RenderPassID, 0);
+
+    l_TessellationBuilder.setRasterizationState(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    m_TessellationPipelineWFID = l_Device.createPipeline(l_TessellationBuilder, m_TessellationPipelineLayoutID, m_RenderPassID, 0);
+
+    l_Device.freeShader(vertexShaderID);
+    l_Device.freeShader(fragmentShaderID);
+    l_Device.freeShader(tessellationControlShaderID);
+    l_Device.freeShader(tessellationEvaluationShaderID);
+
+    std::array<VkPushConstantRange, 1> l_ComputePushConstantRanges;
+    l_ComputePushConstantRanges[0] = { VkPushConstantRange{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstantData)} };
+    std::array<ResourceID, 1> l_ComputeDescriptorSetLayouts = { m_ComputeDescriptorSetLayoutID };
+    m_ComputePipelineLayoutID = l_Device.createPipelineLayout(l_ComputeDescriptorSetLayouts, l_ComputePushConstantRanges);
+
+    const uint32_t l_ComputeShaderID = l_Device.createShader("shaders/noise.comp", VK_SHADER_STAGE_COMPUTE_BIT, false, {});
+    m_ComputeNoisePipelineID = l_Device.createComputePipeline(m_ComputePipelineLayoutID, l_ComputeShaderID, "main");
 }
 
-void Engine::createHeightmapDescriptor()
+void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_t p_TextHeight)
 {
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
 
-    int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load("assets/perlin.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-    if (!pixels)
-    {
-        throw std::runtime_error("Failed to load texture image!");
-    }
-    const VkExtent3D extent = { static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1 };
+    const VkExtent3D extent = { p_TextWidth, p_TextHeight, 1 };
 
-    m_HeightmapID = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, extent, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, 0);
+    m_HeightmapID = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_R32_SFLOAT, extent, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, 0);
     VulkanImage& l_HeightmapImage = l_Device.getImage(m_HeightmapID);
     l_HeightmapImage.allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
-    l_Device.dumpDataIntoImage(m_HeightmapID, pixels, extent, 4, 0, false);
-    stbi_image_free(pixels);
+    l_HeightmapImage.setQueue(m_ComputeQueuePos.familyIndex);
 
-    VulkanMemoryBarrierBuilder l_BarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, 0};
-    l_BarrierBuilder.addImageMemoryBarrier(m_HeightmapID, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_GraphicsQueuePos.familyIndex);
-
-    const ResourceID l_BufferID = l_Device.createOneTimeCommandBuffer(0);
-    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(l_BufferID, 0);
-    l_Buffer.beginRecording(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-    l_Buffer.cmdPipelineBarrier(l_BarrierBuilder);
-    l_Buffer.endRecording();
-    l_Buffer.submit(l_Device.getQueue(m_TransferQueuePos), {}, {});
-
-    m_HeightmapViewID = l_HeightmapImage.createImageView(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    m_HeightmapViewID = l_HeightmapImage.createImageView(VK_FORMAT_R32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
     m_HeightmapSamplerID = l_HeightmapImage.createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     {
-        VkDescriptorSetLayoutBinding l_Binding{};
-        l_Binding.binding = 0;
-        l_Binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        l_Binding.descriptorCount = 1;
-        l_Binding.stageFlags = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        std::array<VkDescriptorSetLayoutBinding, 1> l_Bindings;
+        l_Bindings[0].binding = 0;
+        l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        l_Bindings[0].descriptorCount = 1;
+        l_Bindings[0].stageFlags = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        l_Bindings[0].pImmutableSamplers = nullptr;
 
-        std::array<VkDescriptorSetLayoutBinding, 1> l_Bindings = { l_Binding };
         m_TessellationDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
     }
 
-    std::array<VkDescriptorPoolSize, 1> l_PoolSizes = {{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}}};
-    m_TessellationDescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 1, 0);
-    m_TessellationDescriptorSetID = l_Device.createDescriptorSet(m_TessellationDescriptorPoolID, m_TessellationDescriptorSetLayoutID);
+    m_TessellationDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_TessellationDescriptorSetLayoutID);
 
     VkDescriptorImageInfo l_ImageInfo;
     l_ImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -348,12 +383,39 @@ void Engine::createHeightmapDescriptor()
 
     l_Device.updateDescriptorSets(l_Writes);
 
-    l_Device.waitIdle();
-    l_Device.freeCommandBuffer(l_BufferID, 0);
+    {
+        std::array<VkDescriptorSetLayoutBinding, 1> l_Bindings;
+        l_Bindings[0].binding = 0;
+        l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        l_Bindings[0].descriptorCount = 1;
+        l_Bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        m_ComputeDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
+    }
+
+    m_ComputeNoiseDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_ComputeDescriptorSetLayoutID);
+
+    VkDescriptorImageInfo l_ComputeImageInfo;
+    l_ComputeImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    l_ComputeImageInfo.imageView = *l_HeightmapImage.getImageView(m_HeightmapViewID);
+    l_ComputeImageInfo.sampler = *l_HeightmapImage.getSampler(m_HeightmapSamplerID);
+
+    std::array<VkWriteDescriptorSet, 1> l_ComputeWrites{};
+    l_ComputeWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    l_ComputeWrites[0].dstSet = *l_Device.getDescriptorSet(m_ComputeNoiseDescriptorSetID);
+    l_ComputeWrites[0].dstBinding = 0;
+    l_ComputeWrites[0].dstArrayElement = 0;
+    l_ComputeWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    l_ComputeWrites[0].descriptorCount = 1;
+    l_ComputeWrites[0].pImageInfo = &l_ComputeImageInfo;
+
+    l_Device.updateDescriptorSets(l_ComputeWrites);
 }
 
-void Engine::render(VulkanCommandBuffer& p_Buffer, const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData)
+void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const bool p_ComputedNoise)
 {
+    VulkanCommandBuffer& p_Buffer = VulkanContext::getDevice(m_DeviceID).getCommandBuffer(m_GraphicsCmdBufferID, 0);
+
     m_PushConstants.cameraPos = m_Camera.getPosition();
     m_PushConstants.mvp = m_Camera.getVPMatrix();
 
@@ -381,10 +443,11 @@ void Engine::render(VulkanCommandBuffer& p_Buffer, const uint32_t l_ImageIndex, 
     scissor.offset = { 0, 0 };
     scissor.extent = extent;
 
-    p_Buffer.beginRecording();
+    if (!m_UsingSharedCmdBuffer || !p_ComputedNoise)
+        p_Buffer.beginRecording();
 
     p_Buffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
-    p_Buffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_TessellationPipelineID);
+    p_Buffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_Wireframe ? m_TessellationPipelineWFID : m_TessellationPipelineID);
     p_Buffer.cmdSetViewport(viewport);
     p_Buffer.cmdSetScissor(scissor);
 
@@ -392,6 +455,7 @@ void Engine::render(VulkanCommandBuffer& p_Buffer, const uint32_t l_ImageIndex, 
     p_Buffer.cmdPushConstant(m_TessellationPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, PushConstantData::getVertexShaderOffset(), PushConstantData::getVertexShaderSize(), &m_PushConstants);
     p_Buffer.cmdPushConstant(m_TessellationPipelineLayoutID, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, PushConstantData::getTessellationControlShaderOffset(), PushConstantData::getTessellationControlShaderSize(), &m_PushConstants.minTessLevel);
     p_Buffer.cmdPushConstant(m_TessellationPipelineLayoutID, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, PushConstantData::getTessellationEvaluationShaderOffset(), PushConstantData::getTessellationEvaluationShaderSize(), &m_PushConstants.heightScale);
+    p_Buffer.cmdPushConstant(m_TessellationPipelineLayoutID, VK_SHADER_STAGE_FRAGMENT_BIT, PushConstantData::getFragmentShaderOffset(), PushConstantData::getFragmentShaderSize(), &m_PushConstants.color);
 
     p_Buffer.cmdDraw(m_PushConstants.gridSize * m_PushConstants.gridSize * 4, 0);
 
@@ -399,6 +463,73 @@ void Engine::render(VulkanCommandBuffer& p_Buffer, const uint32_t l_ImageIndex, 
 
     p_Buffer.cmdEndRenderPass();
     p_Buffer.endRecording();
+}
+
+bool Engine::renderNoise()
+{
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
+
+    const bool l_NeedsCompute = m_NoiseDirty || m_NormalDirty;
+
+    if (l_NeedsCompute)
+    {
+        l_Buffer.reset();
+        l_Buffer.beginRecording();
+    }
+
+    VulkanImage& l_HeightmapImage = l_Device.getImage(m_HeightmapID);
+    const VkExtent3D l_ImageSize = l_HeightmapImage.getSize();
+    const uint32_t groupCountX = (l_ImageSize.width + 7) / 8; // Adjust to local size
+    const uint32_t groupCountY = (l_ImageSize.height + 7) / 8;
+
+    if (m_NoiseDirty)
+    {
+        VulkanMemoryBarrierBuilder l_EnterBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
+        l_EnterBarrierBuilder.addImageMemoryBarrier(m_HeightmapID, VK_IMAGE_LAYOUT_GENERAL, m_ComputeQueuePos.familyIndex, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        l_Buffer.cmdPipelineBarrier(l_EnterBarrierBuilder);
+        l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_GENERAL);
+        l_HeightmapImage.setQueue(m_ComputeQueuePos.familyIndex);
+
+        l_Buffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputeNoisePipelineID);
+        l_Buffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineLayoutID, m_ComputeNoiseDescriptorSetID);
+        l_Buffer.cmdPushConstant(m_ComputePipelineLayoutID, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstantData), &m_ComputePushConstants);
+        l_Buffer.cmdDispatch(groupCountX, groupCountY, 1);
+
+        VulkanMemoryBarrierBuilder l_ExitBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, 0};
+        l_ExitBarrierBuilder.addImageMemoryBarrier(m_HeightmapID, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_GraphicsQueuePos.familyIndex, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        l_Buffer.cmdPipelineBarrier(l_ExitBarrierBuilder);
+        l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        l_HeightmapImage.setQueue(m_GraphicsQueuePos.familyIndex);
+
+        m_NormalDirty = true;
+        m_NoiseDirty = false;
+    }
+
+    if (m_NormalDirty)
+    {
+        /*VulkanMemoryBarrierBuilder l_EnterBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
+        l_EnterBarrierBuilder.addImageMemoryBarrier(m_NormalmapID, VK_IMAGE_LAYOUT_GENERAL, m_ComputeQueuePos.familyIndex, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        l_Buffer.cmdPipelineBarrier(l_EnterBarrierBuilder);
+
+        VulkanMemoryBarrierBuilder l_ExitBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
+        l_EnterBarrierBuilder.addImageMemoryBarrier(m_NormalmapID, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_GraphicsQueuePos.familyIndex, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        l_Buffer.cmdPipelineBarrier(l_ExitBarrierBuilder);*/
+
+        m_NormalDirty = false;
+    }
+
+    if (l_NeedsCompute && !m_UsingSharedCmdBuffer)
+    {
+        l_Buffer.endRecording();
+
+        const VulkanQueue l_ComputeQueue = l_Device.getQueue(m_ComputeQueuePos);
+        const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = { VulkanCommandBuffer::WaitSemaphoreData{m_RenderFinishedSemaphoreID, 0} };
+        const std::array<ResourceID, 1> l_SignalSemaphores = { m_ComputeFinishedSemaphoreID };
+        l_Buffer.submit(l_ComputeQueue, l_WaitSemaphores, l_SignalSemaphores);
+    }
+
+    return l_NeedsCompute;
 }
 
 void Engine::recreateSwapchain(const VkExtent2D p_NewSize)
@@ -422,7 +553,7 @@ void Engine::recreateSwapchain(const VkExtent2D p_NewSize)
     Logger::popContext();
 }
 
-void Engine::initImgui() const
+void Engine::initImgui()
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -464,17 +595,26 @@ void Engine::initImgui() const
     l_InitInfo.MinImageCount = l_Swapchain.getMinImageCount();
     l_InitInfo.ImageCount = l_Swapchain.getImageCount();
     l_InitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    ImGui_ImplVulkan_Init(&l_InitInfo );
+    ImGui_ImplVulkan_Init(&l_InitInfo);
+
+    VulkanImage l_HeightmapImage = l_Device.getImage(m_HeightmapID);
+    m_HeightmapDescriptorSet = ImGui_ImplVulkan_AddTexture(*l_HeightmapImage.getSampler(m_HeightmapSamplerID), *l_HeightmapImage.getImageView(m_HeightmapViewID), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void Engine::drawImgui()
 {
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+
     ImGui_ImplVulkan_NewFrame();
     m_Window.frameImgui();
     ImGui::NewFrame();
 
     // ImGui here
     {
+        ImGui::Begin("Performance");
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::End();
+
         ImGui::Begin("Controls");
 
         ImGui::DragFloat("Height scale", &m_PushConstants.heightScale, 0.1f);
@@ -493,7 +633,123 @@ void Engine::drawImgui()
             m_PushConstants.maxTessLevel = m_PushConstants.minTessLevel;
         ImGui::DragFloat("Tessellation factor", &m_PushConstants.tessFactor, 0.001f, 0.01f, 1.f);
         ImGui::DragFloat("Tessellation slope", &m_PushConstants.tessSlope, 0.01f, 0.01f, 2.f);
+        ImGui::Separator();
+        ImGui::ColorEdit3("Color", &m_PushConstants.color.x);
+        ImGui::Separator();
+        ImGui::Checkbox("Wireframe", &m_Wireframe);
+        ImGui::Separator();
+        ImGui::Checkbox("Noise Hot Reload", &m_HotReload);
+        if (!m_HotReload)
+        {
+            ImGui::DragFloat2("Noise offset", &m_ComputePushConstants.offset.x, 0.01f);
+            ImGui::DragFloat("Noise scale", &m_ComputePushConstants.scale, 0.01f);
+            ImGui::DragFloat("Noise W", &m_ComputePushConstants.w, 0.01f);
+            if (ImGui::Button("Recompute Noise"))
+            {
+                m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+        }
+        else
+        {
+            glm::vec2 l_Offset = m_ComputePushConstants.offset;
+            ImGui::DragFloat2("Noise offset", &l_Offset.x, 0.01f);
+            if (l_Offset != m_ComputePushConstants.offset)
+            {
+                m_ComputePushConstants.offset = l_Offset;
+                m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+            float l_Scale = m_ComputePushConstants.scale;
+            ImGui::DragFloat("Noise scale", &l_Scale, 0.001f, 0.001f, 1.f);
+            if (l_Scale != m_ComputePushConstants.scale)
+            {
+                m_ComputePushConstants.scale = l_Scale;
+                m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+            float l_W = m_W;
+            ImGui::DragFloat("Noise W", &l_W, 0.01f);
+            if (l_W != m_W)
+            {
+                m_W = l_W;
+                m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+            ImGui::Checkbox("Animated W", &m_WAnimated);
+            if (m_WAnimated)
+            {
+                ImGui::DragFloat("W speed", &m_WSpeed, 0.01f);
+
+                m_WOffset += m_WSpeed * ImGui::GetIO().DeltaTime;
+                m_ComputePushConstants.w = m_W + m_WOffset;
+                m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+        }
+        ImGui::Separator();
+        ImGui::BeginDisabled(m_ShowImagePanel);
+        if (ImGui::Button("Preview Images"))
+        {
+            m_ShowImagePanel = true;
+            m_ImagePreview = NONE;
+        }
+        ImGui::EndDisabled();
         ImGui::End();
+
+        if (m_ShowImagePanel)
+        {
+            ImGui::Begin("Images", &m_ShowImagePanel);
+            // ComboBox
+            const char* l_ImageNames[] = { "None", "Heightmap", "Normalmap" };
+            if (ImGui::BeginCombo("Image", l_ImageNames[m_ImagePreview]))
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    const bool l_Selected = (m_ImagePreview == i);
+                    if (ImGui::Selectable(l_ImageNames[i], l_Selected))
+                    {
+                        m_ImagePreview = static_cast<ImagePreview>(i);
+                    }
+                    if (l_Selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::End();
+
+            switch (m_ImagePreview)
+            {
+            case NONE:
+                break;
+            case HEIGHTMAP:
+                if (m_HeightmapDescriptorSet == VK_NULL_HANDLE)
+                    break;
+                {
+                    const VkExtent3D l_Size = l_Device.getImage(m_HeightmapID).getSize();
+
+                    ImGui::Begin("Texture");
+                    ImGui::Image(reinterpret_cast<ImTextureID>(m_HeightmapDescriptorSet), ImVec2(l_Size.width, l_Size.height));
+                    ImGui::End();
+                }
+                break;
+            case NORMALMAP:
+                if (m_NormalmapDescriptorSet == VK_NULL_HANDLE)
+                    break;
+                {
+                    const VkExtent3D l_Size = l_Device.getImage(m_HeightmapID).getSize(); // Should be normalmap
+
+                    ImGui::Begin("Texture");
+                    ImGui::Image(reinterpret_cast<ImTextureID>(m_NormalmapDescriptorSet), ImVec2(l_Size.width, l_Size.height));
+                    ImGui::End();
+                }
+                break;
+            }
+        }
+
+        
     }
 
     ImGui::Render();

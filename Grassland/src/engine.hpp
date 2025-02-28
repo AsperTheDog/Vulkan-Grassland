@@ -18,14 +18,24 @@ struct PushConstantData
     alignas(4)  float heightScale = 10.f;
     alignas(16) glm::mat4 mvp;
     alignas(4)  float uvOffsetScale = 0.002f;
+    alignas(16) glm::vec3 color = { 0.0f, 1.0f, 0.0f };
 
     static uint32_t getVertexShaderOffset() { return 0; }
     static uint32_t getTessellationControlShaderOffset() { return offsetof(PushConstantData, minTessLevel); }
     static uint32_t getTessellationEvaluationShaderOffset() { return offsetof(PushConstantData, heightScale); }
+    static uint32_t getFragmentShaderOffset() { return offsetof(PushConstantData, color); }
 
     static uint32_t getVertexShaderSize() { return offsetof(PushConstantData, minTessLevel); }
     static uint32_t getTessellationControlShaderSize() { return offsetof(PushConstantData, heightScale) - offsetof(PushConstantData, minTessLevel); }
-    static uint32_t getTessellationEvaluationShaderSize() { return sizeof(PushConstantData) - offsetof(PushConstantData, heightScale); }
+    static uint32_t getTessellationEvaluationShaderSize() { return offsetof(PushConstantData, color) - offsetof(PushConstantData, heightScale); }
+    static uint32_t getFragmentShaderSize() { return sizeof(PushConstantData) - offsetof(PushConstantData, color); }
+};
+
+struct ComputePushConstantData
+{
+    alignas(16) glm::vec2 offset;
+    alignas(4) float w;
+    alignas(4) float scale = 0.001f;
 };
 
 class Engine
@@ -38,9 +48,10 @@ public:
 private:
     void createRenderPasses();
     void createPipelines();
-    void createHeightmapDescriptor();
+    void createHeightmapDescriptor(uint32_t p_TextWidth, uint32_t p_TextHeight);
 
-    void render(VulkanCommandBuffer& p_Buffer, uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData);
+    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_ComputedNoise);
+    bool renderNoise();
 
     void recreateSwapchain(VkExtent2D p_NewSize);
 
@@ -49,6 +60,7 @@ private:
     Camera m_Camera;
 
     QueueSelection m_GraphicsQueuePos;
+    QueueSelection m_ComputeQueuePos;
     QueueSelection m_PresentQueuePos;
     QueueSelection m_TransferQueuePos;
 
@@ -57,6 +69,9 @@ private:
     ResourceID m_SwapchainID = UINT32_MAX;
 
     ResourceID m_GraphicsCmdBufferID = UINT32_MAX;
+    ResourceID m_ComputeCmdBufferID = UINT32_MAX;
+
+    ResourceID m_ComputeFinishedSemaphoreID = UINT32_MAX;
 
     ResourceID m_DepthBuffer = UINT32_MAX;
     ResourceID m_DepthBufferView = UINT32_MAX;
@@ -64,8 +79,7 @@ private:
 
     ResourceID m_RenderPassID = UINT32_MAX;
 
-    ResourceID m_GraphicsPipelineID = UINT32_MAX;
-    ResourceID m_PlanePipelineID = UINT32_MAX;
+    ResourceID m_GraphicsGrassPipelineID = UINT32_MAX;
 
     ResourceID m_RenderFinishedSemaphoreID = UINT32_MAX;
     ResourceID m_InFlightFenceID = UINT32_MAX;
@@ -74,16 +88,56 @@ private:
     ResourceID m_HeightmapViewID = UINT32_MAX;
     ResourceID m_HeightmapSamplerID = UINT32_MAX;
 
+    ResourceID m_NormalmapID = UINT32_MAX;
+    ResourceID m_NormalmapViewID = UINT32_MAX;
+    ResourceID m_NormalmapSamplerID = UINT32_MAX;
+
+    ResourceID m_DescriptorPoolID = UINT32_MAX;
+
     ResourceID m_TessellationPipelineID = UINT32_MAX;
+    ResourceID m_TessellationPipelineWFID = UINT32_MAX;
     ResourceID m_TessellationPipelineLayoutID = UINT32_MAX;
     ResourceID m_TessellationDescriptorSetLayoutID = UINT32_MAX;
-    ResourceID m_TessellationDescriptorPoolID = UINT32_MAX;
     ResourceID m_TessellationDescriptorSetID = UINT32_MAX;
 
+    ResourceID m_ComputeNoisePipelineID = UINT32_MAX;
+    ResourceID m_ComputeNormalPipelineID = UINT32_MAX;
+    ResourceID m_ComputePipelineLayoutID = UINT32_MAX;
+    ResourceID m_ComputeDescriptorSetLayoutID = UINT32_MAX;
+    ResourceID m_ComputeNoiseDescriptorSetID = UINT32_MAX;
+    ResourceID m_ComputeNormalDescriptorSetID = UINT32_MAX;
+
+    bool m_UsingSharedCmdBuffer = false;
+
+    ComputePushConstantData m_ComputePushConstants;
+    bool m_HotReload = true;
+    bool m_WAnimated = false;
+    float m_WSpeed = 0.1f;
+    float m_WOffset = 0.0f;
+    float m_W = 0.0f;
+    
     PushConstantData m_PushConstants;
     float m_UVOffset = 0.005f;
 
+    bool m_Wireframe = false;
+
+    bool m_NoiseDirty = true;
+    bool m_NormalDirty = true;
+
 private:
-    void initImgui() const;
+    void initImgui();
     void drawImgui();
+
+    enum ImagePreview : uint8_t
+    {
+        NONE,
+        HEIGHTMAP,
+        NORMALMAP
+    };
+
+    bool m_ShowImagePanel = false;
+    ImagePreview m_ImagePreview = NONE;
+
+    VkDescriptorSet m_HeightmapDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet m_NormalmapDescriptorSet = VK_NULL_HANDLE;
 };
