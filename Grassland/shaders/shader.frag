@@ -2,7 +2,7 @@
 
 layout(push_constant) uniform PushConstant
 {
-    layout(offset = 128) vec3 color;
+    layout(offset = 112) vec3 color;
 } pushConstant;
 
 layout(location = 0) out vec4 fragColor;
@@ -16,6 +16,8 @@ void main()
 
     float intensity = max(dot(normal, lightDir), 0.0);
     vec3 finalColor = pushConstant.color * intensity;
+    // Add some ambient light
+    finalColor += pushConstant.color * 0.1;
 
     fragColor = vec4(finalColor, 1.0);
 }

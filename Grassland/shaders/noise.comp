@@ -2,10 +2,8 @@
 // Define workgroup size
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// The output image: a 2D texture (one float per pixel)
 layout(binding = 0, r32f) uniform image2D noiseTexture;
 
-// Push constants to control the noise
 layout(push_constant) uniform PushConstants {
     vec2 offsets; // 2D offset applied to the input coordinate
     float w;      // Third dimension value (can be animated)
@@ -110,25 +108,16 @@ float psrddnoise(vec2 x, vec2 period, float alpha, out vec2 gradient, out vec3 d
 }
 
 void main() {
-    // Get the pixel coordinate from the global invocation ID
     ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
 
-    // Compute the noise coordinate from the pixel coordinate
-    // (scaled and offset via push constants)
     vec2 uv = pixelCoord * pushConstants.scale + pushConstants.offsets;
 
-    // Define a period of zero (non-periodic noise)
     vec2 period = vec2(0.0);
 
-    // Variables to hold the gradient and second derivative outputs
     vec2 gradient;
     vec3 secondDerivatives;
 
-    // Compute the noise value using psrddnoise
-    // Here pushConstants.w serves as the alpha (animation) parameter.
     float noiseValue = psrddnoise(uv, period, pushConstants.w, gradient, secondDerivatives);
 
-    // Write the noise value to the output texture.
-    // Since the image is r32f, only the red channel is used.
     imageStore(noiseTexture, pixelCoord, vec4(noiseValue, 0.0, 0.0, 0.0));
 }

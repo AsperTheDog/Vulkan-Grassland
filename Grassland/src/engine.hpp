@@ -8,8 +8,8 @@
 
 struct PushConstantData
 {
-    alignas(4)  uint32_t gridSize = 100;
-    alignas(4)  float patchSize = 1.f;
+    alignas(4)  uint32_t gridSize = 200;
+    alignas(4)  float patchSize = 3.f;
     alignas(4)  float minTessLevel = 1.f;
     alignas(4)  float maxTessLevel = 32.f;
     alignas(4)  float tessFactor = 0.014f;
@@ -17,7 +17,6 @@ struct PushConstantData
     alignas(16) glm::vec3 cameraPos;
     alignas(4)  float heightScale = 10.f;
     alignas(16) glm::mat4 mvp;
-    alignas(4)  float uvOffsetScale = 0.002f;
     alignas(16) glm::vec3 color = { 0.0f, 1.0f, 0.0f };
 
     static uint32_t getVertexShaderOffset() { return 0; }
@@ -31,11 +30,19 @@ struct PushConstantData
     static uint32_t getFragmentShaderSize() { return sizeof(PushConstantData) - offsetof(PushConstantData, color); }
 };
 
-struct ComputePushConstantData
+struct NoisePushConstantData
 {
     alignas(16) glm::vec2 offset;
     alignas(4) float w;
-    alignas(4) float scale = 0.001f;
+    alignas(4) float scale = 0.012f;
+};
+
+struct NormalPushConstantData
+{
+    alignas(4) float heightScale = 10.f;
+    alignas(4) float offsetScale = 0.01f;
+    alignas(4) float patchSize = 1.f;
+    alignas(4) uint32_t gridSize = 100;
 };
 
 class Engine
@@ -102,22 +109,25 @@ private:
 
     ResourceID m_ComputeNoisePipelineID = UINT32_MAX;
     ResourceID m_ComputeNormalPipelineID = UINT32_MAX;
-    ResourceID m_ComputePipelineLayoutID = UINT32_MAX;
-    ResourceID m_ComputeDescriptorSetLayoutID = UINT32_MAX;
+    ResourceID m_ComputeNoisePipelineLayoutID = UINT32_MAX;
+    ResourceID m_ComputeNormalPipelineLayoutID = UINT32_MAX;
+    ResourceID m_ComputeNoiseDescriptorSetLayoutID = UINT32_MAX;
     ResourceID m_ComputeNoiseDescriptorSetID = UINT32_MAX;
+    ResourceID m_ComputeNormalDescriptorSetLayoutID = UINT32_MAX;
     ResourceID m_ComputeNormalDescriptorSetID = UINT32_MAX;
 
     bool m_UsingSharedCmdBuffer = false;
 
-    ComputePushConstantData m_ComputePushConstants;
-    bool m_HotReload = true;
+    NoisePushConstantData m_NoisePushConstants;
+    NormalPushConstantData m_NormalPushConstants;
+    bool m_NoiseHotReload = true;
+    bool m_NormalHotReload = true;
     bool m_WAnimated = false;
     float m_WSpeed = 0.1f;
     float m_WOffset = 0.0f;
     float m_W = 0.0f;
     
     PushConstantData m_PushConstants;
-    float m_UVOffset = 0.005f;
 
     bool m_Wireframe = false;
 

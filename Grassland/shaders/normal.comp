@@ -1,0 +1,46 @@
+#version 450
+// Define workgroup size
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D heightmap;
+layout(binding = 1, rgba32f) uniform image2D normalmap;
+
+layout(push_constant) uniform PushConstants {
+    float heightScale;
+    float offsetScale;
+    float patchSize;
+    uint gridSize;
+} pushConstants;
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    vec2 uv = vec2(coord) / vec2(textureSize(heightmap, 0));
+
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+    {
+        return;
+    }
+
+    vec2 uv1 = uv + vec2(-pushConstants.offsetScale, -pushConstants.offsetScale);
+    vec2 uv2 = uv + vec2(pushConstants.offsetScale, -pushConstants.offsetScale);
+    vec2 uv3 = uv + vec2(-pushConstants.offsetScale, pushConstants.offsetScale);
+    vec2 uv4 = uv + vec2(pushConstants.offsetScale, pushConstants.offsetScale);
+
+    float h1 = texture(heightmap, uv1).r * pushConstants.heightScale;
+    float h2 = texture(heightmap, uv2).r * pushConstants.heightScale;
+    float h3 = texture(heightmap, uv3).r * pushConstants.heightScale;
+    float h4 = texture(heightmap, uv4).r * pushConstants.heightScale;
+
+    float dist = pushConstants.offsetScale * pushConstants.patchSize * pushConstants.gridSize;
+
+    vec3 p1 = vec3(-dist, h1, -dist);
+    vec3 p2 = vec3(dist, h2, -dist);
+    vec3 p3 = vec3(-dist, h3, dist);
+    vec3 p4 = vec3(dist, h4, dist);
+
+    vec3 normal = normalize(cross(p1 - p4, p3 - p2));
+    normal = normal * 0.5 + 0.5;
+
+    imageStore(normalmap, coord, vec4(normal, 1.0));
+}

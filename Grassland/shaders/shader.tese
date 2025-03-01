@@ -4,10 +4,10 @@ layout(quads, equal_spacing, cw) in;
 layout(push_constant) uniform PushConstants {
     layout(offset = 44) float heightScale;
     mat4 mvpMatrix;
-    float uvOffsetScale;
 } pushConstants;
 
 layout(binding = 0) uniform sampler2D heightmap;
+layout(binding = 1) uniform sampler2D normalmap;
 
 layout(location = 0) in vec2 inUV[];
 layout(location = 0) out vec2 uv;
@@ -30,20 +30,7 @@ void main() {
     float height = texture(heightmap, uv).r * pushConstants.heightScale;
     worldPos.y -= height; // Adjust Y based on heightmap
 
-    // === Compute Normal from Heightmap with Grid Scaling ===
-
-    // Sample height differences in texture space
-    float heightL = texture(heightmap, uv + vec2(-pushConstants.uvOffsetScale, 0)).r * pushConstants.heightScale;
-    float heightR = texture(heightmap, uv + vec2(pushConstants.uvOffsetScale, 0)).r * pushConstants.heightScale;
-    float heightD = texture(heightmap, uv + vec2(0, -pushConstants.uvOffsetScale)).r * pushConstants.heightScale;
-    float heightU = texture(heightmap, uv + vec2(0, pushConstants.uvOffsetScale)).r * pushConstants.heightScale;
-
-    // Compute tangent vectors in world space
-    vec3 tangentX = vec3(2.0, heightR - heightL, 0.0);
-    vec3 tangentZ = vec3(0.0, heightU - heightD, 2.0);
-
-    // Compute normal as cross product of tangent vectors
-    normal = normalize(cross(tangentZ, tangentX));
+    normal = normalize(texture(normalmap, uv).xyz * 2.0 - 1.0);
 
     // Apply MVP transformation
     gl_Position = pushConstants.mvpMatrix * vec4(worldPos, 1.0);

@@ -119,10 +119,10 @@ Engine::Engine()
 
     //Descriptor pool
     std::array<VkDescriptorPoolSize, 2> l_PoolSizes = {
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}
     };
-    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 2, 0);
+    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 3, 0);
 
     // Renderpass and pipelines
     createHeightmapDescriptor(512, 512);
@@ -163,6 +163,8 @@ Engine::~Engine()
 
     Logger::setRootContext("Resource cleanup");
 
+    ImGui_ImplVulkan_RemoveTexture(m_HeightmapDescriptorSet);
+    ImGui_ImplVulkan_RemoveTexture(m_NormalmapDescriptorSet);
     ImGui_ImplVulkan_Shutdown();
     m_Window.shutdownImgui();
     ImGui::DestroyContext();
@@ -331,13 +333,23 @@ void Engine::createPipelines()
     l_Device.freeShader(tessellationControlShaderID);
     l_Device.freeShader(tessellationEvaluationShaderID);
 
-    std::array<VkPushConstantRange, 1> l_ComputePushConstantRanges;
-    l_ComputePushConstantRanges[0] = { VkPushConstantRange{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstantData)} };
-    std::array<ResourceID, 1> l_ComputeDescriptorSetLayouts = { m_ComputeDescriptorSetLayoutID };
-    m_ComputePipelineLayoutID = l_Device.createPipelineLayout(l_ComputeDescriptorSetLayouts, l_ComputePushConstantRanges);
+    std::array<VkPushConstantRange, 1> l_ComputeNoisePushConstantRanges;
+    l_ComputeNoisePushConstantRanges[0] = { VkPushConstantRange{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(NoisePushConstantData)} };
+    std::array<ResourceID, 1> l_ComputeDescriptorSetLayouts = { m_ComputeNoiseDescriptorSetLayoutID };
+    m_ComputeNoisePipelineLayoutID = l_Device.createPipelineLayout(l_ComputeDescriptorSetLayouts, l_ComputeNoisePushConstantRanges);
 
     const uint32_t l_ComputeShaderID = l_Device.createShader("shaders/noise.comp", VK_SHADER_STAGE_COMPUTE_BIT, false, {});
-    m_ComputeNoisePipelineID = l_Device.createComputePipeline(m_ComputePipelineLayoutID, l_ComputeShaderID, "main");
+    m_ComputeNoisePipelineID = l_Device.createComputePipeline(m_ComputeNoisePipelineLayoutID, l_ComputeShaderID, "main");
+
+    l_Device.freeShader(l_ComputeShaderID);
+
+    std::array<VkPushConstantRange, 1> l_ComputeNormalPushConstantRanges;
+    l_ComputeNormalPushConstantRanges[0] = { VkPushConstantRange{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(NormalPushConstantData)} };
+    std::array<ResourceID, 1> l_ComputeNormalDescriptorSetLayouts = { m_ComputeNormalDescriptorSetLayoutID };
+    m_ComputeNormalPipelineLayoutID = l_Device.createPipelineLayout(l_ComputeNormalDescriptorSetLayouts, l_ComputeNormalPushConstantRanges);
+
+    const uint32_t l_ComputeNormalShaderID = l_Device.createShader("shaders/normal.comp", VK_SHADER_STAGE_COMPUTE_BIT, false, {});
+    m_ComputeNormalPipelineID = l_Device.createComputePipeline(m_ComputeNormalPipelineLayoutID, l_ComputeNormalShaderID, "main");
 }
 
 void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_t p_TextHeight)
@@ -353,24 +365,40 @@ void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_
 
     m_HeightmapViewID = l_HeightmapImage.createImageView(VK_FORMAT_R32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
     m_HeightmapSamplerID = l_HeightmapImage.createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    
+    m_NormalmapID = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_R32G32B32A32_SFLOAT, extent, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, 0);
+    VulkanImage& l_NormalmapImage = l_Device.getImage(m_NormalmapID);
+    l_NormalmapImage.allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
+    l_NormalmapImage.setQueue(m_ComputeQueuePos.familyIndex);
+
+    m_NormalmapViewID = l_NormalmapImage.createImageView(VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
+    m_NormalmapSamplerID = l_NormalmapImage.createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     {
-        std::array<VkDescriptorSetLayoutBinding, 1> l_Bindings;
+        std::array<VkDescriptorSetLayoutBinding, 2> l_Bindings;
         l_Bindings[0].binding = 0;
         l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         l_Bindings[0].descriptorCount = 1;
         l_Bindings[0].stageFlags = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
         l_Bindings[0].pImmutableSamplers = nullptr;
+        l_Bindings[1].binding = 1;
+        l_Bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        l_Bindings[1].descriptorCount = 1;
+        l_Bindings[1].stageFlags = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        l_Bindings[1].pImmutableSamplers = nullptr;
 
         m_TessellationDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
     }
 
     m_TessellationDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_TessellationDescriptorSetLayoutID);
 
-    VkDescriptorImageInfo l_ImageInfo;
-    l_ImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    l_ImageInfo.imageView = *l_HeightmapImage.getImageView(m_HeightmapViewID);
-    l_ImageInfo.sampler = *l_HeightmapImage.getSampler(m_HeightmapSamplerID);
+std::array<VkDescriptorImageInfo, 2> l_ImageInfos;
+    l_ImageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    l_ImageInfos[0].imageView = *l_HeightmapImage.getImageView(m_HeightmapViewID);
+    l_ImageInfos[0].sampler = *l_HeightmapImage.getSampler(m_HeightmapSamplerID);
+    l_ImageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    l_ImageInfos[1].imageView = *l_NormalmapImage.getImageView(m_NormalmapViewID);
+    l_ImageInfos[1].sampler = *l_NormalmapImage.getSampler(m_NormalmapSamplerID);
 
     std::array<VkWriteDescriptorSet, 1> l_Writes{};
     l_Writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -378,8 +406,8 @@ void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_
     l_Writes[0].dstBinding = 0;
     l_Writes[0].dstArrayElement = 0;
     l_Writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    l_Writes[0].descriptorCount = 1;
-    l_Writes[0].pImageInfo = &l_ImageInfo;
+    l_Writes[0].descriptorCount = 2;
+    l_Writes[0].pImageInfo = l_ImageInfos.data();
 
     l_Device.updateDescriptorSets(l_Writes);
 
@@ -389,11 +417,12 @@ void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_
         l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         l_Bindings[0].descriptorCount = 1;
         l_Bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        l_Bindings[0].pImmutableSamplers = nullptr;
 
-        m_ComputeDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
+        m_ComputeNoiseDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
     }
 
-    m_ComputeNoiseDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_ComputeDescriptorSetLayoutID);
+    m_ComputeNoiseDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_ComputeNoiseDescriptorSetLayoutID);
 
     VkDescriptorImageInfo l_ComputeImageInfo;
     l_ComputeImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -410,6 +439,53 @@ void Engine::createHeightmapDescriptor(const uint32_t p_TextWidth, const uint32_
     l_ComputeWrites[0].pImageInfo = &l_ComputeImageInfo;
 
     l_Device.updateDescriptorSets(l_ComputeWrites);
+
+    {
+        std::array<VkDescriptorSetLayoutBinding, 2> l_Bindings;
+        l_Bindings[0].binding = 0;
+        l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        l_Bindings[0].descriptorCount = 1;
+        l_Bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        l_Bindings[0].pImmutableSamplers = nullptr;
+        l_Bindings[1].binding = 1;
+        l_Bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        l_Bindings[1].descriptorCount = 1;
+        l_Bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        l_Bindings[1].pImmutableSamplers = nullptr;
+
+        m_ComputeNormalDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
+    }
+
+    m_ComputeNormalDescriptorSetID = l_Device.createDescriptorSet(m_DescriptorPoolID, m_ComputeNormalDescriptorSetLayoutID);
+
+    VkDescriptorImageInfo l_ComputeNormalImageInfo1;
+    l_ComputeNormalImageInfo1.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    l_ComputeNormalImageInfo1.imageView = *l_HeightmapImage.getImageView(m_HeightmapViewID);
+    l_ComputeNormalImageInfo1.sampler = *l_HeightmapImage.getSampler(m_HeightmapSamplerID);
+
+    VkDescriptorImageInfo l_ComputeNormalImageInfo2;
+    l_ComputeNormalImageInfo2.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    l_ComputeNormalImageInfo2.imageView = *l_NormalmapImage.getImageView(m_NormalmapViewID);
+    l_ComputeNormalImageInfo2.sampler = *l_NormalmapImage.getSampler(m_NormalmapSamplerID);
+
+    std::array<VkWriteDescriptorSet, 2> l_ComputeNormalWrites{};
+    l_ComputeNormalWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    l_ComputeNormalWrites[0].dstSet = *l_Device.getDescriptorSet(m_ComputeNormalDescriptorSetID);
+    l_ComputeNormalWrites[0].dstBinding = 0;
+    l_ComputeNormalWrites[0].dstArrayElement = 0;
+    l_ComputeNormalWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    l_ComputeNormalWrites[0].descriptorCount = 1;
+    l_ComputeNormalWrites[0].pImageInfo = &l_ComputeNormalImageInfo1;
+
+    l_ComputeNormalWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    l_ComputeNormalWrites[1].dstSet = *l_Device.getDescriptorSet(m_ComputeNormalDescriptorSetID);
+    l_ComputeNormalWrites[1].dstBinding = 1;
+    l_ComputeNormalWrites[1].dstArrayElement = 0;
+    l_ComputeNormalWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    l_ComputeNormalWrites[1].descriptorCount = 1;
+    l_ComputeNormalWrites[1].pImageInfo = &l_ComputeNormalImageInfo2;
+
+    l_Device.updateDescriptorSets(l_ComputeNormalWrites);
 }
 
 void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const bool p_ComputedNoise)
@@ -419,8 +495,8 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
     m_PushConstants.cameraPos = m_Camera.getPosition();
     m_PushConstants.mvp = m_Camera.getVPMatrix();
 
-    const float l_Extent = m_PushConstants.patchSize * static_cast<float>(m_PushConstants.gridSize);
-    m_PushConstants.uvOffsetScale = (m_UVOffset / 100.f) * l_Extent; 
+    //const float l_Extent = m_PushConstants.patchSize * static_cast<float>(m_PushConstants.gridSize);
+    //m_PushConstants.uvOffsetScale = (m_UVOffset / 100.f) * l_Extent; 
 
     const VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(l_Device);
@@ -479,6 +555,7 @@ bool Engine::renderNoise()
     }
 
     VulkanImage& l_HeightmapImage = l_Device.getImage(m_HeightmapID);
+    VulkanImage& l_NormalmapImage = l_Device.getImage(m_NormalmapID);
     const VkExtent3D l_ImageSize = l_HeightmapImage.getSize();
     const uint32_t groupCountX = (l_ImageSize.width + 7) / 8; // Adjust to local size
     const uint32_t groupCountY = (l_ImageSize.height + 7) / 8;
@@ -492,8 +569,8 @@ bool Engine::renderNoise()
         l_HeightmapImage.setQueue(m_ComputeQueuePos.familyIndex);
 
         l_Buffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputeNoisePipelineID);
-        l_Buffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineLayoutID, m_ComputeNoiseDescriptorSetID);
-        l_Buffer.cmdPushConstant(m_ComputePipelineLayoutID, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstantData), &m_ComputePushConstants);
+        l_Buffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputeNoisePipelineLayoutID, m_ComputeNoiseDescriptorSetID);
+        l_Buffer.cmdPushConstant(m_ComputeNoisePipelineLayoutID, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(NoisePushConstantData), &m_NoisePushConstants);
         l_Buffer.cmdDispatch(groupCountX, groupCountY, 1);
 
         VulkanMemoryBarrierBuilder l_ExitBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, 0};
@@ -502,19 +579,27 @@ bool Engine::renderNoise()
         l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         l_HeightmapImage.setQueue(m_GraphicsQueuePos.familyIndex);
 
-        m_NormalDirty = true;
         m_NoiseDirty = false;
     }
 
     if (m_NormalDirty)
     {
-        /*VulkanMemoryBarrierBuilder l_EnterBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
+        VulkanMemoryBarrierBuilder l_EnterBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
         l_EnterBarrierBuilder.addImageMemoryBarrier(m_NormalmapID, VK_IMAGE_LAYOUT_GENERAL, m_ComputeQueuePos.familyIndex, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
         l_Buffer.cmdPipelineBarrier(l_EnterBarrierBuilder);
+        l_NormalmapImage.setLayout(VK_IMAGE_LAYOUT_GENERAL);
+        l_NormalmapImage.setQueue(m_ComputeQueuePos.familyIndex);
+
+        l_Buffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputeNormalPipelineID);
+        l_Buffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputeNormalPipelineLayoutID, m_ComputeNormalDescriptorSetID);
+        l_Buffer.cmdPushConstant(m_ComputeNormalPipelineLayoutID, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(NoisePushConstantData), &m_NormalPushConstants);
+        l_Buffer.cmdDispatch(groupCountX, groupCountY, 1);
 
         VulkanMemoryBarrierBuilder l_ExitBarrierBuilder{m_DeviceID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0};
-        l_EnterBarrierBuilder.addImageMemoryBarrier(m_NormalmapID, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_GraphicsQueuePos.familyIndex, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-        l_Buffer.cmdPipelineBarrier(l_ExitBarrierBuilder);*/
+        l_ExitBarrierBuilder.addImageMemoryBarrier(m_NormalmapID, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_GraphicsQueuePos.familyIndex, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        l_Buffer.cmdPipelineBarrier(l_ExitBarrierBuilder);
+        l_NormalmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        l_NormalmapImage.setQueue(m_GraphicsQueuePos.familyIndex);
 
         m_NormalDirty = false;
     }
@@ -599,6 +684,9 @@ void Engine::initImgui()
 
     VulkanImage l_HeightmapImage = l_Device.getImage(m_HeightmapID);
     m_HeightmapDescriptorSet = ImGui_ImplVulkan_AddTexture(*l_HeightmapImage.getSampler(m_HeightmapSamplerID), *l_HeightmapImage.getImageView(m_HeightmapViewID), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    VulkanImage l_NormalmapImage = l_Device.getImage(m_NormalmapID);
+    m_NormalmapDescriptorSet = ImGui_ImplVulkan_AddTexture(*l_NormalmapImage.getSampler(m_NormalmapSamplerID), *l_NormalmapImage.getImageView(m_NormalmapViewID), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void Engine::drawImgui()
@@ -618,7 +706,6 @@ void Engine::drawImgui()
         ImGui::Begin("Controls");
 
         ImGui::DragFloat("Height scale", &m_PushConstants.heightScale, 0.1f);
-        ImGui::DragFloat("UV Offset Scale", &m_UVOffset, 0.001f, 0.001f, 1.f);
         ImGui::Separator();
         int l_GridSize = m_PushConstants.gridSize;
         ImGui::DragInt("Grid size", &l_GridSize, 1, 1, 100);
@@ -638,35 +725,32 @@ void Engine::drawImgui()
         ImGui::Separator();
         ImGui::Checkbox("Wireframe", &m_Wireframe);
         ImGui::Separator();
-        ImGui::Checkbox("Noise Hot Reload", &m_HotReload);
-        if (!m_HotReload)
+        ImGui::Checkbox("Noise Hot Reload", &m_NoiseHotReload);
+        if (!m_NoiseHotReload)
         {
-            ImGui::DragFloat2("Noise offset", &m_ComputePushConstants.offset.x, 0.01f);
-            ImGui::DragFloat("Noise scale", &m_ComputePushConstants.scale, 0.01f);
-            ImGui::DragFloat("Noise W", &m_ComputePushConstants.w, 0.01f);
+            ImGui::DragFloat2("Noise offset", &m_NoisePushConstants.offset.x, 0.01f);
+            ImGui::DragFloat("Noise scale", &m_NoisePushConstants.scale, 0.01f);
+            ImGui::DragFloat("Noise W", &m_NoisePushConstants.w, 0.01f);
             if (ImGui::Button("Recompute Noise"))
             {
                 m_NoiseDirty = true;
-                m_NormalDirty = true;
             }
         }
         else
         {
-            glm::vec2 l_Offset = m_ComputePushConstants.offset;
+            glm::vec2 l_Offset = m_NoisePushConstants.offset;
             ImGui::DragFloat2("Noise offset", &l_Offset.x, 0.01f);
-            if (l_Offset != m_ComputePushConstants.offset)
+            if (l_Offset != m_NoisePushConstants.offset)
             {
-                m_ComputePushConstants.offset = l_Offset;
+                m_NoisePushConstants.offset = l_Offset;
                 m_NoiseDirty = true;
-                m_NormalDirty = true;
             }
-            float l_Scale = m_ComputePushConstants.scale;
+            float l_Scale = m_NoisePushConstants.scale;
             ImGui::DragFloat("Noise scale", &l_Scale, 0.001f, 0.001f, 1.f);
-            if (l_Scale != m_ComputePushConstants.scale)
+            if (l_Scale != m_NoisePushConstants.scale)
             {
-                m_ComputePushConstants.scale = l_Scale;
+                m_NoisePushConstants.scale = l_Scale;
                 m_NoiseDirty = true;
-                m_NormalDirty = true;
             }
             float l_W = m_W;
             ImGui::DragFloat("Noise W", &l_W, 0.01f);
@@ -674,7 +758,6 @@ void Engine::drawImgui()
             {
                 m_W = l_W;
                 m_NoiseDirty = true;
-                m_NormalDirty = true;
             }
             ImGui::Checkbox("Animated W", &m_WAnimated);
             if (m_WAnimated)
@@ -682,8 +765,47 @@ void Engine::drawImgui()
                 ImGui::DragFloat("W speed", &m_WSpeed, 0.01f);
 
                 m_WOffset += m_WSpeed * ImGui::GetIO().DeltaTime;
-                m_ComputePushConstants.w = m_W + m_WOffset;
+                m_NoisePushConstants.w = m_W + m_WOffset;
                 m_NoiseDirty = true;
+                m_NormalDirty = true;
+            }
+        }
+        ImGui::Separator();
+        ImGui::Checkbox("Normal Hot Reload", &m_NormalHotReload);
+        if (!m_NormalHotReload)
+        {
+            ImGui::DragFloat("Normal offset", &m_NormalPushConstants.offsetScale, 0.001f, 0.001f, 0.1f);
+            if (ImGui::Button("Recompute Normal"))
+            {
+                m_NormalDirty = true;
+            }
+        }
+        else
+        {
+            float l_OffsetScale = m_NormalPushConstants.offsetScale;
+            ImGui::DragFloat("Normal offset", &l_OffsetScale, 0.001f, 0.01f, 0.1f);
+            if (l_OffsetScale != m_NormalPushConstants.offsetScale)
+            {
+                m_NormalPushConstants.offsetScale = l_OffsetScale;
+                m_NormalDirty = true;
+            }
+            if (m_PushConstants.patchSize != m_NormalPushConstants.patchSize)
+            {
+                m_NormalPushConstants.patchSize = m_PushConstants.patchSize;
+                m_NormalDirty = true;
+            }
+            if (m_PushConstants.gridSize != m_NormalPushConstants.gridSize)
+            {
+                m_NormalPushConstants.gridSize = m_PushConstants.gridSize;
+                m_NormalDirty = true;
+            }
+            if (m_PushConstants.heightScale != m_NormalPushConstants.heightScale)
+            {
+                m_NormalPushConstants.heightScale = m_PushConstants.heightScale;
+                m_NormalDirty = true;
+            }
+            if (m_NoiseDirty)
+            {
                 m_NormalDirty = true;
             }
         }
@@ -739,7 +861,7 @@ void Engine::drawImgui()
                 if (m_NormalmapDescriptorSet == VK_NULL_HANDLE)
                     break;
                 {
-                    const VkExtent3D l_Size = l_Device.getImage(m_HeightmapID).getSize(); // Should be normalmap
+                    const VkExtent3D l_Size = l_Device.getImage(m_NormalmapID).getSize();
 
                     ImGui::Begin("Texture");
                     ImGui::Image(reinterpret_cast<ImTextureID>(m_NormalmapDescriptorSet), ImVec2(l_Size.width, l_Size.height));
