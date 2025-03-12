@@ -2,21 +2,19 @@
 layout(vertices = 4) out;
 
 layout(push_constant) uniform CameraData {
-    layout(offset = 8) float minTessLevel;
+    layout(offset = 16) vec3 cameraPos;
+    float minTessLevel;
     float maxTessLevel;
     float tessFactor;
     float tessSlope;
-    float scaleFactor;
-    vec3 cameraPos;
 };
 
-layout(location = 0) in vec2 texCoord[];  // Received from vertex shader
-layout(location = 0) out vec2 tcOut[4];   // Send to tess eval shader
+layout(location = 0) in vec2 texCoord[];
+layout(location = 0) out vec2 tcOut[4];
 
 // A helper function to compute tessellation factor based on a world-space position
 float computeTessFactor(vec3 pos) {
     float dist = length(cameraPos - pos);
-    // Clamp the scaled distance to [0,1] and then apply a power function for smoothing
     return mix(maxTessLevel, minTessLevel, pow(clamp(dist * tessFactor, 0.0, 1.0), tessSlope));
 }
 
@@ -46,12 +44,11 @@ void main() {
         gl_TessLevelOuter[2] = tess2;
         gl_TessLevelOuter[3] = tess3;
 
-        // For the inner tessellation factors, you can use an average of opposite edges.
+        // For the inner tessellation factors, average of opposite edges.
         gl_TessLevelInner[0] = (tess0 + tess3) * 0.5;
         gl_TessLevelInner[1] = (tess2 + tess1) * 0.5;
     }
 
-    // Pass through the positions and UVs
     gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
     tcOut[gl_InvocationID] = texCoord[gl_InvocationID];
 }

@@ -1,11 +1,11 @@
 #version 450
-// Define workgroup size
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0, r32f) uniform image2D noiseTexture;
 
 layout(push_constant) uniform PushConstants {
     vec2 offsets; // 2D offset applied to the input coordinate
+    uvec2 size;   // Image size
     float w;      // Third dimension value (can be animated)
     float scale;  // Scale factor to zoom in/out the noise
 } pushConstants;
@@ -110,7 +110,7 @@ float psrddnoise(vec2 x, vec2 period, float alpha, out vec2 gradient, out vec3 d
 void main() {
     ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
 
-    vec2 uv = pixelCoord * pushConstants.scale + pushConstants.offsets;
+    vec2 uv = (vec2(pixelCoord) / pushConstants.size + pushConstants.offsets) * pushConstants.scale;
 
     vec2 period = vec2(0.0);
 

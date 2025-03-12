@@ -136,24 +136,31 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\grass_engine.cpp" />
+    <ClCompile Include="src\plane_engine.cpp" />
     <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sdl_window.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\grass_engine.hpp" />
+    <ClInclude Include="src\plane_engine.hpp" />
     <ClInclude Include="src\camera.hpp" />
     <ClInclude Include="src\engine.hpp" />
     <ClInclude Include="src\sdl_window.hpp" />
     <ClInclude Include="src\vertex.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\grass.comp" />
+    <None Include="shaders\grass.frag" />
+    <None Include="shaders\grass.vert" />
     <None Include="shaders\noise.comp" />
     <None Include="shaders\normal.comp" />
-    <None Include="shaders\shader.frag" />
-    <None Include="shaders\shader.tesc" />
-    <None Include="shaders\shader.tese" />
-    <None Include="shaders\shader.vert" />
+    <None Include="shaders\plane.frag" />
+    <None Include="shaders\plane.tesc" />
+    <None Include="shaders\plane.tese" />
+    <None Include="shaders\plane.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

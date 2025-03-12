@@ -2,48 +2,13 @@
 #include <utils/identifiable.hpp>
 
 #include "camera.hpp"
+#include "grass_engine.hpp"
 #include "imgui.h"
+#include "plane_engine.hpp"
 #include "sdl_window.hpp"
 #include "vulkan_queues.hpp"
 
-struct PushConstantData
-{
-    alignas(4)  uint32_t gridSize = 200;
-    alignas(4)  float patchSize = 3.f;
-    alignas(4)  float minTessLevel = 1.f;
-    alignas(4)  float maxTessLevel = 32.f;
-    alignas(4)  float tessFactor = 0.014f;
-    alignas(4)  float tessSlope = 0.07f;
-    alignas(16) glm::vec3 cameraPos;
-    alignas(4)  float heightScale = 10.f;
-    alignas(16) glm::mat4 mvp;
-    alignas(16) glm::vec3 color = { 0.0f, 1.0f, 0.0f };
-
-    static uint32_t getVertexShaderOffset() { return 0; }
-    static uint32_t getTessellationControlShaderOffset() { return offsetof(PushConstantData, minTessLevel); }
-    static uint32_t getTessellationEvaluationShaderOffset() { return offsetof(PushConstantData, heightScale); }
-    static uint32_t getFragmentShaderOffset() { return offsetof(PushConstantData, color); }
-
-    static uint32_t getVertexShaderSize() { return offsetof(PushConstantData, minTessLevel); }
-    static uint32_t getTessellationControlShaderSize() { return offsetof(PushConstantData, heightScale) - offsetof(PushConstantData, minTessLevel); }
-    static uint32_t getTessellationEvaluationShaderSize() { return offsetof(PushConstantData, color) - offsetof(PushConstantData, heightScale); }
-    static uint32_t getFragmentShaderSize() { return sizeof(PushConstantData) - offsetof(PushConstantData, color); }
-};
-
-struct NoisePushConstantData
-{
-    alignas(16) glm::vec2 offset;
-    alignas(4) float w;
-    alignas(4) float scale = 0.012f;
-};
-
-struct NormalPushConstantData
-{
-    alignas(4) float heightScale = 10.f;
-    alignas(4) float offsetScale = 0.01f;
-    alignas(4) float patchSize = 1.f;
-    alignas(4) uint32_t gridSize = 100;
-};
+class VulkanSwapchain;
 
 class Engine
 {
@@ -52,13 +17,29 @@ public:
     ~Engine();
     void run();
 
+    [[nodiscard]] VulkanDevice& getDevice() const;
+    [[nodiscard]] VulkanSwapchain& getSwapchain() const;
+    [[nodiscard]] ResourceID getRenderPassID() const { return m_RenderPassID; }
+    [[nodiscard]] ResourceID getDescriptorPoolID() const { return m_DescriptorPoolID; }
+
+    [[nodiscard]] bool isNoiseDirty() const { return m_NoiseDirty; }
+    [[nodiscard]] bool isNormalDirty() const { return m_NormalDirty; }
+    [[nodiscard]] bool isGrassDirty() const { return m_GrassDirty; }
+
+    void setNoiseDirty() { m_NoiseDirty = true; }
+    void setNormalDirty() { m_NormalDirty = true; }
+    void setGrassDirty() { m_GrassDirty = true; }
+
+    [[nodiscard]] QueueSelection getGraphicsQueuePos() const { return m_GraphicsQueuePos; }
+    [[nodiscard]] QueueSelection getComputeQueuePos() const { return m_ComputeQueuePos; }
+    Camera& getCamera() { return m_Camera; }
+
 private:
     void createRenderPasses();
-    void createPipelines();
-    void createHeightmapDescriptor(uint32_t p_TextWidth, uint32_t p_TextHeight);
 
-    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_ComputedNoise);
+    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_UsedCompute) const;
     bool renderNoise();
+    bool updateGrass(bool p_ComputedPlane);
 
     void recreateSwapchain(VkExtent2D p_NewSize);
 
@@ -86,68 +67,30 @@ private:
 
     ResourceID m_RenderPassID = UINT32_MAX;
 
-    ResourceID m_GraphicsGrassPipelineID = UINT32_MAX;
-
     ResourceID m_RenderFinishedSemaphoreID = UINT32_MAX;
     ResourceID m_InFlightFenceID = UINT32_MAX;
 
-    ResourceID m_HeightmapID = UINT32_MAX;
-    ResourceID m_HeightmapViewID = UINT32_MAX;
-    ResourceID m_HeightmapSamplerID = UINT32_MAX;
-
-    ResourceID m_NormalmapID = UINT32_MAX;
-    ResourceID m_NormalmapViewID = UINT32_MAX;
-    ResourceID m_NormalmapSamplerID = UINT32_MAX;
-
     ResourceID m_DescriptorPoolID = UINT32_MAX;
-
-    ResourceID m_TessellationPipelineID = UINT32_MAX;
-    ResourceID m_TessellationPipelineWFID = UINT32_MAX;
-    ResourceID m_TessellationPipelineLayoutID = UINT32_MAX;
-    ResourceID m_TessellationDescriptorSetLayoutID = UINT32_MAX;
-    ResourceID m_TessellationDescriptorSetID = UINT32_MAX;
-
-    ResourceID m_ComputeNoisePipelineID = UINT32_MAX;
-    ResourceID m_ComputeNormalPipelineID = UINT32_MAX;
-    ResourceID m_ComputeNoisePipelineLayoutID = UINT32_MAX;
-    ResourceID m_ComputeNormalPipelineLayoutID = UINT32_MAX;
-    ResourceID m_ComputeNoiseDescriptorSetLayoutID = UINT32_MAX;
-    ResourceID m_ComputeNoiseDescriptorSetID = UINT32_MAX;
-    ResourceID m_ComputeNormalDescriptorSetLayoutID = UINT32_MAX;
-    ResourceID m_ComputeNormalDescriptorSetID = UINT32_MAX;
 
     bool m_UsingSharedCmdBuffer = false;
 
-    NoisePushConstantData m_NoisePushConstants;
-    NormalPushConstantData m_NormalPushConstants;
-    bool m_NoiseHotReload = true;
-    bool m_NormalHotReload = true;
-    bool m_WAnimated = false;
-    float m_WSpeed = 0.1f;
-    float m_WOffset = 0.0f;
-    float m_W = 0.0f;
-    
-    PushConstantData m_PushConstants;
+    uint32_t m_CurrentFrame = 0;
 
-    bool m_Wireframe = false;
+    VkPresentModeKHR m_PresentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+private: // Plane
+    PlaneEngine m_Plane{ *this };
+    GrassEngine m_Grass{ *this };
 
     bool m_NoiseDirty = true;
     bool m_NormalDirty = true;
 
+    bool m_GrassDirty = true;
+
 private:
-    void initImgui();
+    void initImgui() const;
     void drawImgui();
 
-    enum ImagePreview : uint8_t
-    {
-        NONE,
-        HEIGHTMAP,
-        NORMALMAP
-    };
-
-    bool m_ShowImagePanel = false;
-    ImagePreview m_ImagePreview = NONE;
-
-    VkDescriptorSet m_HeightmapDescriptorSet = VK_NULL_HANDLE;
-    VkDescriptorSet m_NormalmapDescriptorSet = VK_NULL_HANDLE;
+private:
+    friend class PlaneEngine;
 };

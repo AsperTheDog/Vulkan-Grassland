@@ -1,0 +1,65 @@
+#version 450
+layout(local_size_x = 256) in;
+
+layout(binding = 0) uniform sampler2D heightmap;
+
+struct GrassInstance {
+    vec3 position;
+    float rotation;
+};
+
+layout(binding = 1) buffer GrassBuffer {
+    GrassInstance grassPositions[];
+};
+
+layout(push_constant) uniform PushConstants {
+    vec2 centerPos;
+    vec2 worldOffset;
+    uint tileGridSize;
+    float tileSize;
+    uint tileDensity;
+    float gridExtent;
+    float heightmapScale;
+} pushConstants;
+
+float random(vec2 seed)
+{
+    return fract(sin(dot(seed, vec2(12.9898, 78.233)) * 43758.5453));
+}
+
+float random2(float seed)
+{
+    seed = fract(seed * 0.1031);
+    seed *= seed + 33.33;
+    seed *= seed + seed;
+    return fract(seed);
+}
+
+void main()
+{
+    uint globalIndex = gl_GlobalInvocationID.x;
+    if (globalIndex >= grassPositions.length())
+        return;
+    
+    uint bladesPerTile = pushConstants.tileDensity * pushConstants.tileDensity;
+    uint tileIndex = globalIndex / bladesPerTile;
+
+    vec2 tileOffset = vec2(tileIndex % pushConstants.tileGridSize, tileIndex / pushConstants.tileGridSize) * pushConstants.tileSize;
+    tileOffset -= vec2(pushConstants.tileGridSize * pushConstants.tileSize / 2.0);
+
+    uint bladeIndex = globalIndex - tileIndex * bladesPerTile;
+
+    ivec2 tileCoord = ivec2(bladeIndex % pushConstants.tileDensity, bladeIndex / pushConstants.tileDensity);
+    
+    float grassAreaSize = pushConstants.tileSize / float(pushConstants.tileDensity);
+    vec2 globalPos = pushConstants.centerPos + tileOffset + vec2(tileCoord) * grassAreaSize;
+
+    vec3 pos = vec3(globalPos.x, 0.0, globalPos.y);
+    pos.x += random2(pos.z * 2.3411) * grassAreaSize;
+    pos.z += random2(pos.x * 5.2334) * grassAreaSize;
+    vec2 heightmapUV = (pos.xz - pushConstants.worldOffset) / pushConstants.gridExtent;
+    pos.y = -texture(heightmap, heightmapUV).r * pushConstants.heightmapScale;
+
+    grassPositions[globalIndex].position = pos;
+    grassPositions[globalIndex].rotation = random2(pos.x + pos.z) * 2.0 * 3.14159265359;
+}

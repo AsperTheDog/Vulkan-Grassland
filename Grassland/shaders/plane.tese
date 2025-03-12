@@ -28,10 +28,9 @@ void main() {
 
     // Apply heightmap displacement
     float height = texture(heightmap, uv).r * pushConstants.heightScale;
-    worldPos.y -= height; // Adjust Y based on heightmap
+    worldPos.y -= height;
 
     normal = normalize(texture(normalmap, uv).xyz * 2.0 - 1.0);
 
-    // Apply MVP transformation
     gl_Position = pushConstants.mvpMatrix * vec4(worldPos, 1.0);
 }
