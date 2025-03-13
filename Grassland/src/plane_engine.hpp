@@ -23,7 +23,7 @@ public:
         alignas(4)  float tessSlope = 0.05f;
         alignas(4)  float heightScale = 10.f;
         alignas(16) glm::mat4 mvp;
-        alignas(16) glm::vec3 color = { 0.0f, 0.5f, 0.0f };
+        alignas(16) glm::vec3 color = { 0.0f, 0.15f, 0.0f };
 
         static uint32_t getVertexShaderOffset() { return 0; }
         static uint32_t getTessellationControlShaderOffset() { return offsetof(PushConstantData, cameraPos); }

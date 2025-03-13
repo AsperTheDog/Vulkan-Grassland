@@ -153,7 +153,7 @@ Engine::Engine()
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
     m_Plane.initialize(512);
-    m_Grass.initalize({ m_Plane.getHeightmapID(), m_Plane.getHeightmapViewID(), m_Plane.getHeightmapSamplerID() }, {13, 19, 30}, {130, 100, 80});
+    m_Grass.initalize({ m_Plane.getHeightmapID(), m_Plane.getHeightmapViewID(), m_Plane.getHeightmapSamplerID() }, {9, 17, 30}, {90, 80, 70});
 
     initImgui();
     m_Plane.initializeImgui();
