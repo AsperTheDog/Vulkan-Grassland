@@ -9,7 +9,7 @@ layout(location = 0) in vec3 inPosition;  // Instance base position
 layout(location = 1) in float inRotation; // Rotation (in radians)
 
 const vec3 vertexPositions[3] = vec3[](
-    vec3( 0.0, -1.0,  0.0),  // Base
+    vec3( 0.0, -2.0,  0.0),  // Base
     vec3(-0.1, 0.0,  0.0),  // Left tip
     vec3( 0.1, 0.0,  0.0)   // Right tip
 );
@@ -20,8 +20,15 @@ const vec3 vertexNormals[3] = vec3[](
     vec3( 0.2,  0.8,  1.0)   // Right tip normal
 );
 
+const vec3 vertexColors[3] = vec3[](
+    vec3(0.0, 0.6, 0.0),  // Base color
+    vec3(0.0, 0.1, 0.0),  // Left tip color
+    vec3(0.0, 0.1, 0.0)   // Right tip color
+);
+
 layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out vec3 fragPosition;
+layout(location = 2) out vec3 fragColor;
 
 void main() {
     // Rotation around world up (0, -1, 0)
@@ -38,6 +45,7 @@ void main() {
     // Output the normal and position in world space
     fragNormal = normal;
     fragPosition = position;
+    fragColor = vertexColors[gl_VertexIndex];
 
     gl_Position = pc.VPMatrix * vec4(position, 1.0);
 }

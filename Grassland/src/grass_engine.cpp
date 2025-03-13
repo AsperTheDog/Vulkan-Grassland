@@ -5,14 +5,14 @@
 #include "engine.hpp"
 #include "vulkan_device.hpp"
 
-void GrassEngine::initalize(const ImageData p_Heightmap, const uint32_t p_TileGridSize, const uint32_t p_Density)
+void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32_t, 3> p_TileGridSizes, const std::array<uint32_t, 3> p_Densities)
 {
     m_HeightmapID = p_Heightmap;
 
-    m_TileGridSize = p_TileGridSize;
-    m_ImguiGridSize = p_TileGridSize;
-    m_GrassDensity = p_Density;
-    m_ImguiGrassDensity = p_Density;
+    m_TileGridSizes = p_TileGridSizes;
+    m_ImguiGridSizes = p_TileGridSizes;
+    m_GrassDensities = p_Densities;
+    m_ImguiGrassDensities = p_Densities;
 
     VulkanDevice& l_Device = m_Engine.getDevice();
 
@@ -129,16 +129,16 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
     }
 }
 
-void GrassEngine::updateTileGridSize(const uint32_t p_TileGridSize)
+void GrassEngine::updateTileGridSize(const std::array<uint32_t, 3> p_TileGridSizes)
 {
-    m_TileGridSize = p_TileGridSize;
+    m_TileGridSizes = p_TileGridSizes;
     m_Engine.setGrassDirty();
     m_NeedsRebuild = true;
 }
 
-void GrassEngine::updateGrassDensity(const uint32_t p_NewDensity)
+void GrassEngine::updateGrassDensity(const std::array<uint32_t, 3> p_NewDensities)
 {
-    m_GrassDensity = p_NewDensity;
+    m_GrassDensities = p_NewDensities;
     m_Engine.setGrassDirty();
     m_NeedsRebuild = true;
 }
@@ -160,17 +160,14 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
     p_CmdBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineID);
     p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineLayoutID, m_ComputeDescriptorSetID);
     
-    const uint32_t l_InstancePerTile = m_GrassDensity * m_GrassDensity;
-    const uint32_t l_TileCount = m_TileGridSize * m_TileGridSize;
-    const uint32_t l_InstanceCount = l_TileCount * l_InstancePerTile;
-    const uint32_t groupCount = (l_InstanceCount + 255) / 256;
+    const uint32_t groupCount = (getInstanceCount() + 255) / 256;
 
     const ComputePushConstantData l_PushConstants{
         .centerPos = m_CurrentTile,
         .worldOffset = glm::vec2(m_CurrentTile) - glm::vec2(p_GridExtent / 2.0),
-        .tileGridSize = m_TileGridSize,
+        .tileGridSizes = glm::uvec3(m_TileGridSizes[0], m_TileGridSizes[1], m_TileGridSizes[2]),
+        .tileDensities = glm::uvec3(m_GrassDensities[0], m_GrassDensities[1], m_GrassDensities[2]),
         .tileSize = p_TileSize,
-        .tileDensity = m_GrassDensity,
         .gridExtent = p_GridExtent,
         .heightmapScale = p_HeightmapScale
     };
@@ -203,34 +200,47 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
 }
 
 void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
-{    
-    const uint32_t l_InstancePerTile = m_GrassDensity * m_GrassDensity;
-    const uint32_t l_TileCount = m_TileGridSize * m_TileGridSize;
-    const uint32_t l_InstanceCount = l_TileCount * l_InstancePerTile;
-
+{
     const glm::mat4& l_VPMatrix = m_Engine.getCamera().getVPMatrix();
 
     p_CmdBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_GrassPipelineID);
     p_CmdBuffer.cmdBindVertexBuffer(m_InstanceDataBufferID, 0);
     p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &l_VPMatrix);
-    p_CmdBuffer.cmdDraw(3, 0, l_InstanceCount, 0);
+    p_CmdBuffer.cmdDraw(3, 0, getInstanceCount(), 0);
 }
 
 void GrassEngine::drawImgui()
 {
     ImGui::Begin("Grass");
 
-    ImGui::InputScalar("Grid Size", ImGuiDataType_U32, &m_ImguiGridSize);
+    ImGui::InputScalar("Grid Rings Close", ImGuiDataType_U32, &m_ImguiGridSizes[0]);
+    ImGui::InputScalar("Grid Rings Medium", ImGuiDataType_U32, &m_ImguiGridSizes[1]);
+    ImGui::InputScalar("Grid Rings Far", ImGuiDataType_U32, &m_ImguiGridSizes[2]);
     if (ImGui::Button("Update##Radius"))
-        updateTileGridSize(m_ImguiGridSize);
+        updateTileGridSize(m_ImguiGridSizes);
 
     ImGui::Separator();
 
-    ImGui::InputScalar("Grass Density", ImGuiDataType_U32, &m_ImguiGrassDensity);
+    ImGui::InputScalar("Grass Density Close", ImGuiDataType_U32, &m_ImguiGrassDensities[0]);
+    ImGui::InputScalar("Grass Density Medium", ImGuiDataType_U32, &m_ImguiGrassDensities[1]);
+    ImGui::InputScalar("Grass Density Far", ImGuiDataType_U32, &m_ImguiGrassDensities[2]);
     if (ImGui::Button("Update##Density"))
-        updateGrassDensity(m_ImguiGrassDensity);
+        updateGrassDensity(m_ImguiGrassDensities);
 
     ImGui::End();
+}
+
+uint32_t GrassEngine::getInstanceCount() const
+{
+    const uint32_t l_CloseTiles = m_TileGridSizes[0] * m_TileGridSizes[0];
+    const uint32_t l_MediumTiles = m_TileGridSizes[1] * m_TileGridSizes[1] - l_CloseTiles;
+    const uint32_t l_FarTiles = m_TileGridSizes[2] * m_TileGridSizes[2] - l_CloseTiles - l_MediumTiles;
+
+    const uint32_t l_CloseGrassInTile = m_GrassDensities[0] * m_GrassDensities[0];
+    const uint32_t l_MediumGrassInTile = m_GrassDensities[1] * m_GrassDensities[1];
+    const uint32_t l_FarGrassInTile = m_GrassDensities[2] * m_GrassDensities[2];
+
+    return l_CloseTiles * l_CloseGrassInTile + l_MediumTiles * l_MediumGrassInTile + l_FarTiles * l_FarGrassInTile;
 }
 
 void GrassEngine::rebuildResources()
@@ -240,10 +250,7 @@ void GrassEngine::rebuildResources()
     if (m_InstanceDataBufferID != UINT32_MAX)
         l_Device.freeBuffer(m_InstanceDataBufferID);
 
-    const uint32_t l_InstancePerTile = m_GrassDensity * m_GrassDensity;
-    const uint32_t l_TileCount = m_TileGridSize * m_TileGridSize;
-    const uint32_t l_InstanceCount = l_TileCount * l_InstancePerTile;
-    m_InstanceDataBufferID = l_Device.createBuffer(sizeof(InstanceElem) * l_InstanceCount, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_Engine.getComputeQueuePos().familyIndex);
+    m_InstanceDataBufferID = l_Device.createBuffer(sizeof(InstanceElem) * getInstanceCount(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_Engine.getComputeQueuePos().familyIndex);
     VulkanBuffer& l_InstanceDataBuffer = l_Device.getBuffer(m_InstanceDataBufferID);
     l_InstanceDataBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false});
     l_InstanceDataBuffer.setQueue(m_Engine.getComputeQueuePos().familyIndex);

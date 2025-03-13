@@ -15,24 +15,76 @@ layout(binding = 1) buffer GrassBuffer {
 layout(push_constant) uniform PushConstants {
     vec2 centerPos;
     vec2 worldOffset;
-    uint tileGridSize;
+    uvec3 tileGridSizes;
+    uvec3 tileDensities;
     float tileSize;
-    uint tileDensity;
     float gridExtent;
     float heightmapScale;
 } pushConstants;
 
-float random(vec2 seed)
-{
-    return fract(sin(dot(seed, vec2(12.9898, 78.233)) * 43758.5453));
-}
+struct TileData {
+    vec2 offset;
+    uint density;
+    uint bladeOffset;
+};
 
-float random2(float seed)
+float random(float seed)
 {
     seed = fract(seed * 0.1031);
     seed *= seed + 33.33;
     seed *= seed + seed;
     return fract(seed);
+}
+
+uint getGlobalPosIndex(uint innerRing, uint outerRing, uint gridSize, uint localIndex)
+{
+    uint midSize = outerRing - innerRing;
+    uint midHalfSize = midSize / 2;
+    uint fullRows = min(localIndex / outerRing, midHalfSize);
+    uint currentIndex = uint(max(0, int(localIndex) - int(midHalfSize * outerRing)));
+    uint innerRowOffset = currentIndex % midSize;
+    uint midRows = min(currentIndex / midSize, innerRing);
+    currentIndex = max(0, int(currentIndex) - int(innerRing * midSize));
+    fullRows += currentIndex / outerRing;
+    bool extraRow = fullRows == midHalfSize && innerRowOffset >= midHalfSize && midRows < innerRing;
+
+    uint externSize = gridSize - outerRing;
+    uint externHalfSize = externSize / 2;
+    uint externOffset = (gridSize * externHalfSize) + (fullRows + midRows) * externSize + externHalfSize;
+    uint innerOffset = (midRows + int(extraRow)) * innerRing;
+    return localIndex + externOffset + innerOffset;
+}
+
+TileData getTileData()
+{
+    uint globalIndex = gl_GlobalInvocationID.x;
+
+    uint tileCount1 = pushConstants.tileGridSizes.x * pushConstants.tileGridSizes.x;
+    uint tileCount2 = pushConstants.tileGridSizes.y * pushConstants.tileGridSizes.y - tileCount1;
+    uint tileCount3 = pushConstants.tileGridSizes.z * pushConstants.tileGridSizes.z - tileCount1 - tileCount2;
+
+    uint instanceCount1 = pushConstants.tileDensities.x * pushConstants.tileDensities.x * tileCount1;
+    uint instanceCount2 = pushConstants.tileDensities.y * pushConstants.tileDensities.y * tileCount2;
+    uint instanceCount3 = pushConstants.tileDensities.z * pushConstants.tileDensities.z * tileCount3;
+    
+    uint offsets[3] = {0, instanceCount1, instanceCount1 + instanceCount2};
+    uint innerRings[3] = {0, pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y};
+    uint outerRings[3] = {pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y, pushConstants.tileGridSizes.z};
+    uint densities[3] = {pushConstants.tileDensities.x, pushConstants.tileDensities.y, pushConstants.tileDensities.z};
+
+    uint ringIndex = int(globalIndex >= offsets[1]) + int(globalIndex >= offsets[2]);
+    uint density = densities[ringIndex] * densities[ringIndex];
+    uint localIndex = globalIndex - offsets[ringIndex];
+    uint localTileIndex = localIndex / density;
+
+    uint globalPosIndex = getGlobalPosIndex(innerRings[ringIndex], outerRings[ringIndex], pushConstants.tileGridSizes.z, localTileIndex);
+
+    TileData data;
+    data.offset = vec2(globalPosIndex % pushConstants.tileGridSizes.z, globalPosIndex / pushConstants.tileGridSizes.z) * pushConstants.tileSize;
+    data.offset -= vec2(pushConstants.tileGridSizes.z * pushConstants.tileSize / 2.0);
+    data.density = densities[ringIndex];
+    data.bladeOffset = localIndex % density;
+    return data;
 }
 
 void main()
@@ -41,25 +93,21 @@ void main()
     if (globalIndex >= grassPositions.length())
         return;
     
-    uint bladesPerTile = pushConstants.tileDensity * pushConstants.tileDensity;
-    uint tileIndex = globalIndex / bladesPerTile;
+    TileData tileData = getTileData();
 
-    vec2 tileOffset = vec2(tileIndex % pushConstants.tileGridSize, tileIndex / pushConstants.tileGridSize) * pushConstants.tileSize;
-    tileOffset -= vec2(pushConstants.tileGridSize * pushConstants.tileSize / 2.0);
+    uint bladesPerTile = tileData.density * tileData.density;
 
-    uint bladeIndex = globalIndex - tileIndex * bladesPerTile;
-
-    ivec2 tileCoord = ivec2(bladeIndex % pushConstants.tileDensity, bladeIndex / pushConstants.tileDensity);
+    ivec2 tileCoord = ivec2(tileData.bladeOffset % tileData.density, tileData.bladeOffset / tileData.density);
     
-    float grassAreaSize = pushConstants.tileSize / float(pushConstants.tileDensity);
-    vec2 globalPos = pushConstants.centerPos + tileOffset + vec2(tileCoord) * grassAreaSize;
+    float grassAreaSize = pushConstants.tileSize / float(tileData.density);
+    vec2 globalPos = pushConstants.centerPos + tileData.offset + vec2(tileCoord) * grassAreaSize;
 
     vec3 pos = vec3(globalPos.x, 0.0, globalPos.y);
-    pos.x += random2(pos.z * 2.3411) * grassAreaSize;
-    pos.z += random2(pos.x * 5.2334) * grassAreaSize;
+    pos.x += random(pos.z * 2.3411) * grassAreaSize;
+    pos.z += random(pos.x * 5.2334) * grassAreaSize;
     vec2 heightmapUV = (pos.xz - pushConstants.worldOffset) / pushConstants.gridExtent;
     pos.y = -texture(heightmap, heightmapUV).r * pushConstants.heightmapScale;
 
     grassPositions[globalIndex].position = pos;
-    grassPositions[globalIndex].rotation = random2(pos.x + pos.z) * 2.0 * 3.14159265359;
+    grassPositions[globalIndex].rotation = random(pos.x + pos.z) * 2.0 * 3.14159265359;
 }

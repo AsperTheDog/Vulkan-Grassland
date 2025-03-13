@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include <array>
 #include <glm/gtx/hash.hpp>
 
 #include "utils/identifiable.hpp"
@@ -24,9 +25,9 @@ public:
     {
         alignas(8) glm::vec2 centerPos;
         alignas(8) glm::vec2 worldOffset;
-        alignas(4) uint32_t tileGridSize;
+        alignas(16) glm::uvec3 tileGridSizes;
+        alignas(16) glm::uvec3 tileDensities;
         alignas(4) float tileSize;
-        alignas(4) uint32_t tileDensity;
         alignas(4) float gridExtent;
         alignas(4) float heightmapScale;
     };
@@ -40,13 +41,13 @@ public:
 
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(ImageData p_Heightmap, uint32_t p_TileGridSize, uint32_t p_Density);
+    void initalize(ImageData p_Heightmap, std::array<uint32_t, 3> p_TileGridSizes, std::array<uint32_t, 3> p_Densities);
     void initializeImgui();
 
     void update(glm::vec2 p_CameraTile);
 
-    void updateTileGridSize(uint32_t p_TileGridSize);
-    void updateGrassDensity(uint32_t p_NewDensity);
+    void updateTileGridSize(std::array<uint32_t, 3> p_TileGridSizes);
+    void updateGrassDensity(std::array<uint32_t, 3> p_NewDensities);
 
     void changeCurrentCenter(const glm::ivec2& p_NewCenter);
 
@@ -55,16 +56,18 @@ public:
 
     void drawImgui();
 
+    uint32_t getInstanceCount() const;
+
 private:
     Engine& m_Engine;
 
     glm::vec2 m_CurrentTile{ 0, 0 };
 
-    uint32_t m_TileGridSize;
-    uint32_t m_GrassDensity;
+    std::array<uint32_t, 3> m_TileGridSizes;
+    std::array<uint32_t, 3> m_GrassDensities;
 
-    uint32_t m_ImguiGridSize;
-    uint32_t m_ImguiGrassDensity;
+    std::array<uint32_t, 3> m_ImguiGridSizes;
+    std::array<uint32_t, 3> m_ImguiGrassDensities;
 
     bool m_NeedsRebuild = true;
 
