@@ -1,6 +1,6 @@
 #version 450
 
-layout(location = 0) out vec2 uv;  // Pass UV coordinates to tessellation
+layout(location = 0) out vec2 outUV;  // Pass UV coordinates to tessellation
 
 layout(push_constant) uniform PushConstants {
     uint gridSize;    // Number of patches in one row/column
@@ -31,5 +31,5 @@ void main() {
     vec2 localPos = vertexOffset + tileCoords;
     vec2 worldPos = localPos + worldOffset;
     gl_Position = vec4(worldPos.x, 0.0, worldPos.y, 1.0);
-    uv = localPos / worldExtent;
+    outUV = localPos / worldExtent;
 }

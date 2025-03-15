@@ -15,8 +15,8 @@ layout(binding = 1) buffer GrassBuffer {
 layout(push_constant) uniform PushConstants {
     vec2 centerPos;
     vec2 worldOffset;
-    uvec3 tileGridSizes;
-    uvec3 tileDensities;
+    uvec4 tileGridSizes;
+    uvec4 tileDensities;
     float tileSize;
     float gridExtent;
     float heightmapScale;
@@ -62,26 +62,28 @@ TileData getTileData()
     uint tileCount1 = pushConstants.tileGridSizes.x * pushConstants.tileGridSizes.x;
     uint tileCount2 = pushConstants.tileGridSizes.y * pushConstants.tileGridSizes.y - tileCount1;
     uint tileCount3 = pushConstants.tileGridSizes.z * pushConstants.tileGridSizes.z - tileCount1 - tileCount2;
+    uint tileCount4 = pushConstants.tileGridSizes.w * pushConstants.tileGridSizes.w - tileCount1 - tileCount2 - tileCount3;
 
     uint instanceCount1 = pushConstants.tileDensities.x * pushConstants.tileDensities.x * tileCount1;
     uint instanceCount2 = pushConstants.tileDensities.y * pushConstants.tileDensities.y * tileCount2;
     uint instanceCount3 = pushConstants.tileDensities.z * pushConstants.tileDensities.z * tileCount3;
+    uint instanceCount4 = pushConstants.tileDensities.w * pushConstants.tileDensities.w * tileCount4;
     
-    uint offsets[3] = {0, instanceCount1, instanceCount1 + instanceCount2};
-    uint innerRings[3] = {0, pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y};
-    uint outerRings[3] = {pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y, pushConstants.tileGridSizes.z};
-    uint densities[3] = {pushConstants.tileDensities.x, pushConstants.tileDensities.y, pushConstants.tileDensities.z};
+    uint offsets[4] = {0, instanceCount1, instanceCount1 + instanceCount2, instanceCount1 + instanceCount2 + instanceCount3};
+    uint innerRings[4] = {0, pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y, pushConstants.tileGridSizes.z};
+    uint outerRings[4] = {pushConstants.tileGridSizes.x, pushConstants.tileGridSizes.y, pushConstants.tileGridSizes.z, pushConstants.tileGridSizes.w};
+    uint densities[4] = {pushConstants.tileDensities.x, pushConstants.tileDensities.y, pushConstants.tileDensities.z, pushConstants.tileDensities.w};
 
-    uint ringIndex = int(globalIndex >= offsets[1]) + int(globalIndex >= offsets[2]);
+    uint ringIndex = int(globalIndex >= offsets[1]) + int(globalIndex >= offsets[2]) + int(globalIndex >= offsets[3]);
     uint density = densities[ringIndex] * densities[ringIndex];
     uint localIndex = globalIndex - offsets[ringIndex];
     uint localTileIndex = localIndex / density;
 
-    uint globalPosIndex = getGlobalPosIndex(innerRings[ringIndex], outerRings[ringIndex], pushConstants.tileGridSizes.z, localTileIndex);
+    uint globalPosIndex = getGlobalPosIndex(innerRings[ringIndex], outerRings[ringIndex], pushConstants.tileGridSizes.w, localTileIndex);
 
     TileData data;
-    data.offset = vec2(globalPosIndex % pushConstants.tileGridSizes.z, globalPosIndex / pushConstants.tileGridSizes.z) * pushConstants.tileSize;
-    data.offset -= vec2(pushConstants.tileGridSizes.z * pushConstants.tileSize / 2.0);
+    data.offset = vec2(globalPosIndex % pushConstants.tileGridSizes.w, globalPosIndex / pushConstants.tileGridSizes.w) * pushConstants.tileSize;
+    data.offset -= vec2(pushConstants.tileGridSizes.w * pushConstants.tileSize / 2.0);
     data.density = densities[ringIndex];
     data.bladeOffset = localIndex % density;
     return data;

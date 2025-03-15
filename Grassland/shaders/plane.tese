@@ -10,14 +10,14 @@ layout(binding = 0) uniform sampler2D heightmap;
 layout(binding = 1) uniform sampler2D normalmap;
 
 layout(location = 0) in vec2 inUV[];
-layout(location = 0) out vec2 uv;
-layout(location = 1) out vec3 normal;
+layout(location = 0) out vec2 outUV;
+layout(location = 1) out vec3 outNormal;
 
 void main() {
     // Compute interpolated UVs
     vec2 uv1 = mix(inUV[0], inUV[1], gl_TessCoord.x);
     vec2 uv2 = mix(inUV[2], inUV[3], gl_TessCoord.x);
-    uv = mix(uv1, uv2, gl_TessCoord.y);
+    outUV = mix(uv1, uv2, gl_TessCoord.y);
 
     // Interpolate world-space position from input control points
     vec3 worldPos = mix(
@@ -27,10 +27,10 @@ void main() {
     );
 
     // Apply heightmap displacement
-    float height = texture(heightmap, uv).r * pushConstants.heightScale;
+    float height = texture(heightmap, outUV).r * pushConstants.heightScale;
     worldPos.y -= height;
 
-    normal = normalize(texture(normalmap, uv).xyz * 2.0 - 1.0);
+    outNormal = normalize(texture(normalmap, outUV).xyz * 2.0 - 1.0);
 
     gl_Position = pushConstants.mvpMatrix * vec4(worldPos, 1.0);
 }

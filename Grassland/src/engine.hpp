@@ -22,12 +22,14 @@ public:
     [[nodiscard]] ResourceID getRenderPassID() const { return m_RenderPassID; }
     [[nodiscard]] ResourceID getDescriptorPoolID() const { return m_DescriptorPoolID; }
 
+    [[nodiscard]] NoiseEngine& getNoiseEngine() { return m_Noise; }
+
     [[nodiscard]] bool isNoiseDirty() const { return m_NoiseDirty; }
     [[nodiscard]] bool isNormalDirty() const { return m_NormalDirty; }
     [[nodiscard]] bool isGrassDirty() const { return m_GrassDirty; }
 
-    void setNoiseDirty() { m_NoiseDirty = true; }
-    void setNormalDirty() { m_NormalDirty = true; }
+    void setPlaneNoiseDirty() { m_NoiseDirty = true; }
+    void setPlaneNormalDirty() { m_NormalDirty = true; }
     void setGrassDirty() { m_GrassDirty = true; }
 
     [[nodiscard]] QueueSelection getGraphicsQueuePos() const { return m_GraphicsQueuePos; }
@@ -81,6 +83,7 @@ private:
 private: // Plane
     PlaneEngine m_Plane{ *this };
     GrassEngine m_Grass{ *this };
+    NoiseEngine m_Noise{ *this };
 
     bool m_NoiseDirty = true;
     bool m_NormalDirty = true;

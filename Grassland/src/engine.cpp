@@ -152,10 +152,12 @@ Engine::Engine()
     m_Window.getResizedSignal().connect(this, &Engine::recreateSwapchain);
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
+    m_Noise.initialize();
     m_Plane.initialize(512);
-    m_Grass.initalize({ m_Plane.getHeightmapID(), m_Plane.getHeightmapViewID(), m_Plane.getHeightmapSamplerID() }, {9, 17, 30}, {90, 80, 70});
+    m_Grass.initalize(m_Plane.getNoise().noiseImage, {7, 11, 17, 30}, {90, 80, 70, 60});
 
     initImgui();
+    m_Noise.initializeImgui();
     m_Plane.initializeImgui();
     m_Grass.initializeImgui();
 
@@ -472,6 +474,7 @@ void Engine::drawImgui()
 
     m_Plane.drawImgui();
     m_Grass.drawImgui();
+    m_Noise.drawImgui();
 
     ImGui::Render();
 }

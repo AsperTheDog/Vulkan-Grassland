@@ -9,8 +9,8 @@ layout(push_constant) uniform CameraData {
     float tessSlope;
 };
 
-layout(location = 0) in vec2 texCoord[];
-layout(location = 0) out vec2 tcOut[4];
+layout(location = 0) in vec2 inUV[];
+layout(location = 0) out vec2 outUV[4];
 
 // A helper function to compute tessellation factor based on a world-space position
 float computeTessFactor(vec3 pos) {
@@ -50,5 +50,5 @@ void main() {
     }
 
     gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-    tcOut[gl_InvocationID] = texCoord[gl_InvocationID];
+    outUV[gl_InvocationID] = inUV[gl_InvocationID];
 }

@@ -7,6 +7,7 @@
 #include <array>
 #include <glm/gtx/hash.hpp>
 
+#include "noise_engine.hpp"
 #include "utils/identifiable.hpp"
 
 class VulkanCommandBuffer;
@@ -14,7 +15,18 @@ class Engine;
 
 class GrassEngine
 {
+    struct VertexBufferData
+    {
+        ResourceID m_LODBuffer = UINT32_MAX;
+
+        uint32_t m_IndexStart = 0;
+        std::array<uint32_t, 4> m_IndexOffsets{};
+        std::array<uint32_t, 4> m_IndexCounts{};
+    };
+
 public:
+    using ImageData = NoiseEngine::NoiseObject::ImageData;
+
     struct InstanceElem
     {
         alignas(16) glm::vec3 position;
@@ -25,29 +37,22 @@ public:
     {
         alignas(8) glm::vec2 centerPos;
         alignas(8) glm::vec2 worldOffset;
-        alignas(16) glm::uvec3 tileGridSizes;
-        alignas(16) glm::uvec3 tileDensities;
+        alignas(16) glm::uvec4 tileGridSizes;
+        alignas(16) glm::uvec4 tileDensities;
         alignas(4) float tileSize;
         alignas(4) float gridExtent;
         alignas(4) float heightmapScale;
     };
 
-    struct ImageData
-    {
-        ResourceID image = UINT32_MAX;
-        ResourceID view = UINT32_MAX;
-        ResourceID sampler = UINT32_MAX;
-    };
-
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(ImageData p_Heightmap, std::array<uint32_t, 3> p_TileGridSizes, std::array<uint32_t, 3> p_Densities);
+    void initalize(ImageData p_Heightmap, std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
     void initializeImgui();
 
     void update(glm::vec2 p_CameraTile);
 
-    void updateTileGridSize(std::array<uint32_t, 3> p_TileGridSizes);
-    void updateGrassDensity(std::array<uint32_t, 3> p_NewDensities);
+    void updateTileGridSize(std::array<uint32_t, 4> p_TileGridSizes);
+    void updateGrassDensity(std::array<uint32_t, 4> p_NewDensities);
 
     void changeCurrentCenter(const glm::ivec2& p_NewCenter);
 
@@ -56,22 +61,24 @@ public:
 
     void drawImgui();
 
-    uint32_t getInstanceCount() const;
+    [[nodiscard]] uint32_t getInstanceCount() const;
+    [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
 
 private:
     Engine& m_Engine;
 
     glm::vec2 m_CurrentTile{ 0, 0 };
 
-    std::array<uint32_t, 3> m_TileGridSizes;
-    std::array<uint32_t, 3> m_GrassDensities;
+    std::array<uint32_t, 4> m_TileGridSizes;
+    std::array<uint32_t, 4> m_GrassDensities;
 
-    std::array<uint32_t, 3> m_ImguiGridSizes;
-    std::array<uint32_t, 3> m_ImguiGrassDensities;
+    std::array<uint32_t, 4> m_ImguiGridSizes;
+    std::array<uint32_t, 4> m_ImguiGrassDensities;
 
     bool m_NeedsRebuild = true;
 
 private:
+
     void rebuildResources();
 
     ImageData m_HeightmapID{};
@@ -85,5 +92,7 @@ private:
 
     ResourceID m_GrassPipelineLayoutID = UINT32_MAX;
     ResourceID m_GrassPipelineID = UINT32_MAX;
+
+    VertexBufferData m_VertexBufferData{};
 };
 

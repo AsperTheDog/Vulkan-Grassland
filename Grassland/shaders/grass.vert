@@ -5,47 +5,33 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 // Per-instance attributes
-layout(location = 0) in vec3 inPosition;  // Instance base position
-layout(location = 1) in float inRotation; // Rotation (in radians)
+layout(location = 0) in vec3 inInstPosition;  // Instance base position
+layout(location = 1) in float inInstRotation; // Rotation (in radians)
 
-const vec3 vertexPositions[3] = vec3[](
-    vec3( 0.0, -2.0,  0.0),  // Base
-    vec3(-0.1, 0.0,  0.0),  // Left tip
-    vec3( 0.1, 0.0,  0.0)   // Right tip
-);
-
-const vec3 vertexNormals[3] = vec3[](
-    vec3( 0.0,  0.0,  1.0),  // Base normal
-    vec3(-0.2,  0.8,  1.0),  // Left tip normal
-    vec3( 0.2,  0.8,  1.0)   // Right tip normal
-);
-
-const vec3 vertexColors[3] = vec3[](
-    vec3(0.0, 0.6, 0.0),  // Base color
-    vec3(0.0, 0.1, 0.0),  // Left tip color
-    vec3(0.0, 0.1, 0.0)   // Right tip color
-);
+layout(location = 2) in vec2 vertexPosition;  // Vertex positions
+layout(location = 3) in vec2 vertexNormal;    // Vertex normals
+layout(location = 4) in vec3 vertexColor;     // Vertex colors
 
 layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out vec3 fragPosition;
 layout(location = 2) out vec3 fragColor;
 
 void main() {
+    const float height = 2.0;
+
     // Rotation around world up (0, -1, 0)
     mat3 rotation = mat3(
-        vec3(cos(inRotation), 0.0, sin(inRotation)),
+        vec3(cos(inInstRotation), 0.0, sin(inInstRotation)),
         vec3(0.0, 1.0, 0.0),
-        vec3(-sin(inRotation), 0.0, cos(inRotation))
+        vec3(-sin(inInstRotation), 0.0, cos(inInstRotation))
     );
 
-    // Transform the vertex position and normal
-    vec3 position = inPosition + rotation * vertexPositions[gl_VertexIndex];
-    vec3 normal = rotation * vertexNormals[gl_VertexIndex];
+    vec2 finalVertPos = vertexPosition;
+    finalVertPos.y *= height;
 
-    // Output the normal and position in world space
-    fragNormal = normal;
-    fragPosition = position;
-    fragColor = vertexColors[gl_VertexIndex];
+    fragNormal = rotation * vec3(vertexNormal, 1.0);
+    fragPosition = inInstPosition + rotation * vec3(finalVertPos, 0.0);
+    fragColor = vertexColor;
 
-    gl_Position = pc.VPMatrix * vec4(position, 1.0);
+    gl_Position = pc.VPMatrix * vec4(fragPosition, 1.0);
 }

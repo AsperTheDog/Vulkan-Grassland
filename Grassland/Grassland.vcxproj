@@ -136,6 +136,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\noise_engine.cpp" />
     <ClCompile Include="src\grass_engine.cpp" />
     <ClCompile Include="src\plane_engine.cpp" />
     <ClCompile Include="src\camera.cpp" />
@@ -144,6 +145,7 @@
     <ClCompile Include="src\sdl_window.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\noise_engine.hpp" />
     <ClInclude Include="src\grass_engine.hpp" />
     <ClInclude Include="src\plane_engine.hpp" />
     <ClInclude Include="src\camera.hpp" />
