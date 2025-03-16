@@ -153,10 +153,10 @@ Engine::Engine()
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
     m_NoiseEngine.initialize();
-    m_Heightmap.initialize(512, *this, true);
+    m_Heightmap.initialize(2048, *this, true);
 
     m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 30}, {120, 100, 80, 60});
+    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 60, 50, 40});
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -336,7 +336,7 @@ void Engine::createRenderPasses()
     Logger::popContext();
 }
 
-void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const bool p_UsedCompute) const
+void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const bool p_UsedCompute)
 {
     VulkanCommandBuffer& p_Buffer = VulkanContext::getDevice(m_DeviceID).getCommandBuffer(m_GraphicsCmdBufferID, 0);
     

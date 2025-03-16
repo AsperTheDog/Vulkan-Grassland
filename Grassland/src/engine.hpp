@@ -37,7 +37,7 @@ private:
 
     void createRenderPasses();
 
-    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_UsedCompute) const;
+    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_UsedCompute);
     bool renderNoise();
     bool updateGrass();
 

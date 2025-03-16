@@ -145,21 +145,33 @@ void NoiseEngine::NoiseObject::updateHeightScale(const float p_HeightScale)
 void NoiseEngine::NoiseObject::updateOffset(const glm::vec2 p_Offset)
 {
     if (noiseHotReload && p_Offset != noisePushConstants.offset)
+    {
         noiseNeedsRebuild = true;
+        if (includeNormal)
+            normalNeedsRebuild = true;
+    }
     noisePushConstants.offset = m_NoiseOffset + p_Offset;
 }
 
 void NoiseEngine::NoiseObject::shiftOffset(const glm::vec2 p_Offset)
 {
     if (noiseHotReload && p_Offset != glm::vec2{0.f})
+    {
         noiseNeedsRebuild = true;
+        if (includeNormal)
+            normalNeedsRebuild = true;
+    }
     noisePushConstants.offset += m_NoiseOffset + p_Offset;
 }
 
 void NoiseEngine::NoiseObject::shiftW(const float p_W)
 {
     if (noiseHotReload && p_W != 0.f)
+    {
         noiseNeedsRebuild = true;
+        if (includeNormal)
+            normalNeedsRebuild = true;
+    }
     noisePushConstants.w += p_W;
 }
 

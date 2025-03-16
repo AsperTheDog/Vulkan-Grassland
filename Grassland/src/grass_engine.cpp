@@ -304,7 +304,7 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
     m_WindNoise.updateOffset(m_TileOffset + m_WindOffset);
 
     if (m_ImguiWAnimated)
-        m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime);
+        m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime * m_ImguiWindSpeed);
 }
 
 void GrassEngine::updateTileGridSize(const std::array<uint32_t, 4> p_TileGridSizes)
@@ -387,7 +387,7 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
     m_NeedsUpdate = false;
 }
 
-void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
+void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer)
 {
     const std::array<uint32_t, 4> l_InstanceCounts = getInstanceCounts();
 
@@ -398,17 +398,22 @@ void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
     p_CmdBuffer.cmdBindVertexBuffers(l_Buffers, l_Offsets);
     p_CmdBuffer.cmdBindIndexBuffer(m_VertexBufferData.m_LODBuffer, m_VertexBufferData.m_IndexStart, VK_INDEX_TYPE_UINT16);
     p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, m_GrassPipelineLayoutID, m_GrassDescriptorSetID);
-    p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, GrassPushConstantData::getVertexShaderOffset(), GrassPushConstantData::getVertexShaderSize(), m_PushConstants.getVertexShaderData());
-    p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_FRAGMENT_BIT, GrassPushConstantData::getFragmentShaderOffset(), GrassPushConstantData::getFragmentShaderSize(), m_PushConstants.getFragmentShaderData());
+
+    const float l_Width = m_PushConstants.widthMult;
 
     uint32_t l_Offset = 0;
     for (uint32_t i = 0; i < 4; ++i)
     {
         if (l_InstanceCounts[i] == 0)
             continue;
+        p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, GrassPushConstantData::getVertexShaderOffset(), GrassPushConstantData::getVertexShaderSize(), m_PushConstants.getVertexShaderData());
+        p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_FRAGMENT_BIT, GrassPushConstantData::getFragmentShaderOffset(), GrassPushConstantData::getFragmentShaderSize(), m_PushConstants.getFragmentShaderData());
         p_CmdBuffer.cmdDrawIndexed(m_VertexBufferData.m_IndexCounts[i], m_VertexBufferData.m_IndexOffsets[i], 0, l_InstanceCounts[i], l_Offset);
         l_Offset += l_InstanceCounts[i];
+        m_PushConstants.widthMult += m_ImguiWidthLODSlope;
     }
+
+    m_PushConstants.widthMult = l_Width;
 }
 
 void GrassEngine::drawImgui()
@@ -442,6 +447,7 @@ void GrassEngine::drawImgui()
 
     ImGui::Separator();
     ImGui::DragFloat("Width", &m_PushConstants.widthMult, 0.01f, 0.01f, 2.0f);
+    ImGui::DragFloat("Width LOD Slope", &m_ImguiWidthLODSlope, 0.01f, 0.01f, 1.0f);
     ImGui::ColorEdit3("Base Color", &m_PushConstants.baseColor.x);
     ImGui::ColorEdit3("Tip Color", &m_PushConstants.tipColor.x);
     ImGui::DragFloat("Color Ramp", &m_PushConstants.colorRamp, 0.01f, 0.01f, 10.0f);
@@ -455,7 +461,7 @@ void GrassEngine::drawImgui()
     ImGui::DragFloat("Wind Strength", &m_PushConstants.windStrength, 0.01f, 0.0f, 3.0f);
     ImGui::Checkbox("Animate Wind W", &m_ImguiWAnimated);
     if (m_ImguiWAnimated)
-        ImGui::DragFloat("Wind W Speed", &m_ImguiWindWSpeed, 0.001f, 0.0f, 1.0f);
+        ImGui::DragFloat("Wind W Speed", &m_ImguiWindWSpeed, 0.001f, 0.0f, 50.0f);
     if (ImGui::Button("Edit Wind Noise"))
         m_WindNoise.toggleImgui();
 

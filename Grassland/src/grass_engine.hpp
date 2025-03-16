@@ -51,11 +51,11 @@ public:
     struct GrassPushConstantData
     {
         alignas(16) glm::mat4 vpMatrix;
-        alignas(4) float widthMult = 0.5f;
+        alignas(4) float widthMult = 0.7f;
         alignas(4) float tilt = 0.2f;
         alignas(4) float bend = 1.f;
         alignas(8) glm::vec2 windDir = {0.f, 1.f};
-        alignas(4) float windStrength = 1.5f;
+        alignas(4) float windStrength = 1.0f;
         alignas(16) glm::vec3 baseColor = { 0.0112f, 0.082f, 0.0f };
         alignas(16) glm::vec3 tipColor = { 0.25f, 0.6f, 0.0f };
         alignas(4) float colorRamp = 4.f;
@@ -86,7 +86,7 @@ public:
     void setDirty() { m_NeedsUpdate = true; }
 
     void recompute(const VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
-    void render(const VulkanCommandBuffer& p_CmdBuffer) const;
+    void render(const VulkanCommandBuffer& p_CmdBuffer);
 
     void drawImgui();
 
@@ -112,6 +112,8 @@ private:
 
     bool m_ImguiWAnimated = true;
     float m_ImguiWindWSpeed = 0.6f;
+
+    float m_ImguiWidthLODSlope = 1.f;
 
     glm::vec2 m_TileOffset{};
     glm::vec2 m_WindOffset{};
