@@ -22,26 +22,24 @@ public:
     [[nodiscard]] ResourceID getRenderPassID() const { return m_RenderPassID; }
     [[nodiscard]] ResourceID getDescriptorPoolID() const { return m_DescriptorPoolID; }
 
-    [[nodiscard]] NoiseEngine& getNoiseEngine() { return m_Noise; }
+    [[nodiscard]] NoiseEngine& getNoiseEngine() { return m_NoiseEngine; }
 
-    [[nodiscard]] bool isNoiseDirty() const { return m_NoiseDirty; }
-    [[nodiscard]] bool isNormalDirty() const { return m_NormalDirty; }
-    [[nodiscard]] bool isGrassDirty() const { return m_GrassDirty; }
-
-    void setPlaneNoiseDirty() { m_NoiseDirty = true; }
-    void setPlaneNormalDirty() { m_NormalDirty = true; }
-    void setGrassDirty() { m_GrassDirty = true; }
+    [[nodiscard]] bool isHeightmapDirty() const { return m_Heightmap.isNoiseDirty(); }
+    [[nodiscard]] bool isGrassDirty() const { return m_GrassEngine.isDirty(); }
 
     [[nodiscard]] QueueSelection getGraphicsQueuePos() const { return m_GraphicsQueuePos; }
     [[nodiscard]] QueueSelection getComputeQueuePos() const { return m_ComputeQueuePos; }
     Camera& getCamera() { return m_Camera; }
+    NoiseEngine::NoiseObject& getHeightmap() { return m_Heightmap; }
 
 private:
+    void update();
+
     void createRenderPasses();
 
     void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_UsedCompute) const;
     bool renderNoise();
-    bool updateGrass(bool p_ComputedPlane);
+    bool updateGrass();
 
     void recreateSwapchain(VkExtent2D p_NewSize);
 
@@ -81,14 +79,13 @@ private:
     VkPresentModeKHR m_PresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
 private: // Plane
-    PlaneEngine m_Plane{ *this };
-    GrassEngine m_Grass{ *this };
-    NoiseEngine m_Noise{ *this };
+    PlaneEngine m_PlaneEngine{ *this };
+    GrassEngine m_GrassEngine{ *this };
+    NoiseEngine m_NoiseEngine{ *this };
+    
+    NoiseEngine::NoiseObject m_Heightmap{};
 
-    bool m_NoiseDirty = true;
-    bool m_NormalDirty = true;
-
-    bool m_GrassDirty = true;
+    glm::vec2 m_CurrentTile{ 0, 0 };
 
 private:
     void initImgui() const;

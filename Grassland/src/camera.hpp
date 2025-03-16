@@ -25,6 +25,8 @@ public:
 	[[nodiscard]] glm::vec4 getPositionV4() const;
 	[[nodiscard]] glm::vec3 getDir() const;
 
+    [[nodiscard]] glm::vec2 getTiledPosition(float p_TileSize) const;
+
 	glm::mat4& getViewMatrix();
 	glm::mat4& getProjMatrix();
 	glm::mat4& getVPMatrix();
@@ -44,8 +46,8 @@ private:
     float m_movingSpeed = 10.f;
 	float m_mouseSensitivity = 0.1f;
 
-	glm::vec3 m_position;
-	glm::vec3 m_front;
+	glm::vec3 m_Position;
+	glm::vec3 m_Front;
 	glm::vec3 m_right;
 	float m_fov;
 	float m_aspectRatio;

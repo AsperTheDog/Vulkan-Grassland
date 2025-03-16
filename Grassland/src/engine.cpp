@@ -120,11 +120,11 @@ Engine::Engine()
 
     //Descriptor pool
     std::array<VkDescriptorPoolSize, 3> l_PoolSizes = {
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}
     };
-    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 4, 0);
+    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 5, 0);
 
     // Renderpass and pipelines
     createRenderPasses();
@@ -152,14 +152,18 @@ Engine::Engine()
     m_Window.getResizedSignal().connect(this, &Engine::recreateSwapchain);
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
-    m_Noise.initialize();
-    m_Plane.initialize(512);
-    m_Grass.initalize(m_Plane.getNoise().noiseImage, {7, 11, 17, 30}, {90, 80, 70, 60});
+    m_NoiseEngine.initialize();
+    m_Heightmap.initialize(512, *this, true);
+
+    m_PlaneEngine.initialize();
+    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 80, 70, 60});
 
     initImgui();
-    m_Noise.initializeImgui();
-    m_Plane.initializeImgui();
-    m_Grass.initializeImgui();
+    m_NoiseEngine.initializeImgui();
+    m_Heightmap.initializeImgui();
+
+    m_PlaneEngine.initializeImgui();
+    m_GrassEngine.initializeImgui();
 
     m_Window.toggleMouseCapture();
 }
@@ -170,7 +174,7 @@ Engine::~Engine()
 
     Logger::setRootContext("Resource cleanup");
 
-    m_Plane.cleanup();
+    m_PlaneEngine.cleanup();
 
     ImGui_ImplVulkan_Shutdown();
     m_Window.shutdownImgui();
@@ -196,13 +200,9 @@ void Engine::run()
     {
         m_Window.pollEvents();
         if (m_Window.isMinimized())
-        {
             continue;
-        }
 
-        Engine::drawImgui();
-        m_Plane.update();
-        m_Grass.update(m_Plane.getCameraTile());
+        update();
 
         l_InFlightFence.wait();
         l_InFlightFence.reset();
@@ -210,22 +210,18 @@ void Engine::run()
         VulkanSwapchain& l_Swapchain = l_SwapchainExt->getSwapchain(m_SwapchainID);
         const uint32_t l_ImageIndex = l_Swapchain.acquireNextImage();
         if (l_ImageIndex == UINT32_MAX)
-        {
             continue;
-        }
 
         ImDrawData* l_ImguiDrawData = ImGui::GetDrawData();
 
         if (l_ImguiDrawData->DisplaySize.x <= 0.0f || l_ImguiDrawData->DisplaySize.y <= 0.0f)
-        {
             continue;
-        }
 
         // Record
         bool l_RenderedNoise;
         {
             l_RenderedNoise = renderNoise();
-            l_RenderedNoise = updateGrass(l_RenderedNoise);
+            l_RenderedNoise = updateGrass() || l_RenderedNoise;
             render(l_ImageIndex, l_ImguiDrawData, l_RenderedNoise);
         }
 
@@ -280,6 +276,30 @@ VulkanSwapchain& Engine::getSwapchain() const
     return VulkanSwapchainExtension::get(m_DeviceID)->getSwapchain(m_SwapchainID);
 }
 
+void Engine::update()
+{
+    Engine::drawImgui();
+
+    const glm::vec2 l_CameraTile = m_Camera.getTiledPosition(m_PlaneEngine.getTileSize());
+    if (l_CameraTile != m_PlaneEngine.getCameraTile())
+    {
+        const glm::vec2 l_NoiseOffset = l_CameraTile / m_PlaneEngine.getGridExtent();
+        m_GrassEngine.changeCurrentCenter(l_CameraTile, l_NoiseOffset);
+        m_Heightmap.updateOffset(l_NoiseOffset);
+    }
+
+    m_PlaneEngine.update(l_CameraTile);
+
+    m_Heightmap.updatePatchSize(m_PlaneEngine.getTileSize());
+    m_Heightmap.updateGridSize(m_PlaneEngine.getGridSize());
+    m_Heightmap.updateHeightScale(m_PlaneEngine.getHeightScale());
+
+    m_GrassEngine.update(m_PlaneEngine.getCameraTile());
+
+    if (m_Heightmap.isDirty())
+        m_GrassEngine.setDirty();
+}
+
 void Engine::createRenderPasses()
 {
     Logger::pushContext("Create RenderPass");
@@ -327,8 +347,8 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
         p_Buffer.beginRecording();
     p_Buffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
 
-    m_Plane.render(p_Buffer);
-    m_Grass.render(p_Buffer);
+    m_PlaneEngine.render(p_Buffer);
+    m_GrassEngine.render(p_Buffer);
 
     ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_Buffer);
 
@@ -341,47 +361,33 @@ bool Engine::renderNoise()
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
 
-    const bool l_NeedsCompute = m_NoiseDirty || m_NormalDirty;
+    const bool l_NeedsCompute = m_Heightmap.isDirty();
 
-    if (l_NeedsCompute)
+    if (l_NeedsCompute && !l_Buffer.isRecording())
     {
         l_Buffer.reset();
         l_Buffer.beginRecording();
     }
 
-    if (m_NoiseDirty)
-    {
-        m_Plane.updateNoise(l_Buffer);
-        m_NoiseDirty = false;
-    }
-
-    if (m_NormalDirty)
-    {
-        m_Plane.updateNormal(l_Buffer);
-        m_NormalDirty = false;
-    }
+    m_NoiseEngine.recalculate(l_Buffer, m_Heightmap);
 
     return l_NeedsCompute;
 }
 
-bool Engine::updateGrass(const bool p_ComputedPlane)
+bool Engine::updateGrass()
 {
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
 
-    const bool l_NeedsCompute = m_GrassDirty || p_ComputedPlane;
+    const bool l_NeedsCompute = m_GrassEngine.isDirty();
 
-    if (l_NeedsCompute && !p_ComputedPlane)
+    if (l_NeedsCompute && !l_Buffer.isRecording())
     {
         l_Buffer.reset();
         l_Buffer.beginRecording();
     }
 
-    if (l_NeedsCompute)
-    {
-        m_Grass.recompute(l_Buffer, m_Plane.getTileSize(), m_Plane.getGridExtent(), m_Plane.getHeightmapScale(), m_GraphicsQueuePos.familyIndex);
-        m_GrassDirty = false;
-    }
+    m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale(), m_GraphicsQueuePos.familyIndex);
 
     if (l_NeedsCompute && !m_UsingSharedCmdBuffer)
     {
@@ -468,13 +474,20 @@ void Engine::drawImgui()
     ImGui::NewFrame();
 
     ImGui::Begin("Info");
+
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::Text("Camera position (%.2f, %.2f, %.2f)", m_Camera.getPosition().x, m_Camera.getPosition().y, m_Camera.getPosition().z);
+    ImGui::Separator();
+    if (ImGui::Button("Edit heightmap"))
+        m_Heightmap.toggleImgui();
+
     ImGui::End();
 
-    m_Plane.drawImgui();
-    m_Grass.drawImgui();
-    m_Noise.drawImgui();
+    m_Heightmap.drawImgui("Heightmap");
+
+    m_PlaneEngine.drawImgui();
+    m_GrassEngine.drawImgui();
+    m_NoiseEngine.drawImgui();
 
     ImGui::Render();
 }

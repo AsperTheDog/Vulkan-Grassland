@@ -98,9 +98,9 @@ void NoiseEngine::NoiseObject::initialize(uint32_t p_Size, Engine& p_Engine, con
     }
 }
 
-void NoiseEngine::NoiseObject::initializeImgui(Engine& p_Engine)
+void NoiseEngine::NoiseObject::initializeImgui()
 {
-    VulkanDevice& l_Device = p_Engine.getDevice();
+    VulkanDevice& l_Device = m_NoiseEngine->getEngine().getDevice();
 
     VulkanImage l_HeightmapImage = l_Device.getImage(noiseImage.image);
     imguiHeightmapDescriptorSet = ImGui_ImplVulkan_AddTexture(*l_HeightmapImage.getSampler(noiseImage.sampler), *l_HeightmapImage.getImageView(noiseImage.view), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -110,6 +110,187 @@ void NoiseEngine::NoiseObject::initializeImgui(Engine& p_Engine)
         VulkanImage l_NormalmapImage = l_Device.getImage(normalImage.image);
         imguiNormalmapDescriptorSet = ImGui_ImplVulkan_AddTexture(*l_NormalmapImage.getSampler(normalImage.sampler), *l_NormalmapImage.getImageView(normalImage.view), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
+}
+
+void NoiseEngine::NoiseObject::updatePatchSize(const float p_PatchSize)
+{
+    if (includeNormal)
+    {
+        if (normalHotReload && p_PatchSize != normalPushConstants.patchSize)
+            normalNeedsRebuild = true;
+        normalPushConstants.patchSize = p_PatchSize;
+    }
+}
+
+void NoiseEngine::NoiseObject::updateGridSize(const uint32_t p_GridSize)
+{
+    if (includeNormal)
+    {
+        if (normalHotReload && p_GridSize != normalPushConstants.gridSize)
+            normalNeedsRebuild = true;
+        normalPushConstants.gridSize = p_GridSize;
+    }
+}
+
+void NoiseEngine::NoiseObject::updateHeightScale(const float p_HeightScale)
+{
+    if (includeNormal)
+    {
+        if (normalHotReload && p_HeightScale != normalPushConstants.heightScale)
+            normalNeedsRebuild = true;
+        normalPushConstants.heightScale = p_HeightScale;
+    }
+}
+
+void NoiseEngine::NoiseObject::updateOffset(const glm::vec2 p_Offset)
+{
+    if (noiseHotReload && p_Offset != noisePushConstants.offset)
+        noiseNeedsRebuild = true;
+    noisePushConstants.offset = m_NoiseOffset + p_Offset;
+}
+
+void NoiseEngine::NoiseObject::drawImgui(const std::string_view p_NoiseName)
+{
+    if (!m_ShowWindow)
+        return;
+
+    ImGui::Begin((std::string("Noise Object (") + p_NoiseName.data() + ")").c_str(), &m_ShowWindow);
+    ImGui::Checkbox("Noise Hot Reload", &noiseHotReload);
+    if (!noiseHotReload)
+    {
+        ImGui::DragFloat2("Noise offset", &noisePushConstants.offset.x, 0.01f);
+        ImGui::DragFloat("Noise scale", &noisePushConstants.scale, 0.01f);
+        ImGui::DragScalar("Octaves", ImGuiDataType_U32, &noisePushConstants.octaves);
+        ImGui::DragFloat("Persistence", &noisePushConstants.persistence, 0.1f);
+        ImGui::DragFloat("Lacunarity", &noisePushConstants.lacunarity, 0.1f);
+        ImGui::DragFloat("Noise W", &noisePushConstants.w, 0.01f);
+        if (ImGui::Button("Recompute Noise"))
+        {
+            noiseNeedsRebuild = true;
+        }
+    }
+    else
+    {
+        glm::vec2 l_Offset = m_NoiseOffset;
+        ImGui::DragFloat2("Noise offset", &l_Offset.x, 0.01f);
+        if (l_Offset != m_NoiseOffset)
+        {
+            m_NoiseOffset = l_Offset;
+            noiseNeedsRebuild = true;
+        }
+        float l_Scale = noisePushConstants.scale;
+        ImGui::DragFloat("Noise scale", &l_Scale, 1.f, 1.f, 100.f);
+        if (l_Scale != noisePushConstants.scale)
+        {
+            noisePushConstants.scale = l_Scale;
+            noiseNeedsRebuild = true;
+        }
+        uint32_t l_Octaves = noisePushConstants.octaves;
+        ImGui::DragScalar("Octaves", ImGuiDataType_U32, &l_Octaves);
+        if (l_Octaves != noisePushConstants.octaves)
+        {
+            noisePushConstants.octaves = l_Octaves;
+            noiseNeedsRebuild = true;
+        }
+        float l_Persistence = noisePushConstants.persistence;
+        ImGui::DragFloat("Persistence", &l_Persistence, 0.1f, 0.1f, 10.f);
+        if (l_Persistence != noisePushConstants.persistence)
+        {
+            noisePushConstants.persistence = l_Persistence;
+            noiseNeedsRebuild = true;
+        }
+        float l_Lacunarity = noisePushConstants.lacunarity;
+        ImGui::DragFloat("Lacunarity", &l_Lacunarity, 0.1f, 0.1f, 10.f);
+        if (l_Lacunarity != noisePushConstants.lacunarity)
+        {
+            noisePushConstants.lacunarity = l_Lacunarity;
+            noiseNeedsRebuild = true;
+        }
+        float l_W = m_W;
+        ImGui::DragFloat("Noise W", &l_W, 0.01f);
+        if (l_W != m_W)
+        {
+            m_W = l_W;
+            noiseNeedsRebuild = true;
+        }
+        ImGui::Checkbox("Animated W", &m_WAnimated);
+        if (m_WAnimated)
+        {
+            ImGui::DragFloat("W speed", &m_WSpeed, 0.01f);
+
+            m_WOffset += m_WSpeed * ImGui::GetIO().DeltaTime;
+            noisePushConstants.w = m_W + m_WOffset;
+            noiseNeedsRebuild = true;
+        }
+    }
+
+    ImGui::Separator();
+
+    if (includeNormal)
+    {
+        ImGui::Checkbox("Normal Hot Reload", &normalHotReload);
+        if (!normalHotReload)
+        {
+            ImGui::DragFloat("Normal offset", &normalPushConstants.offsetScale, 0.001f, 0.001f, 0.1f);
+            if (ImGui::Button("Recompute Normal"))
+            {
+                normalNeedsRebuild = true;
+            }
+        }
+        else
+        {
+            float l_OffsetScale = normalPushConstants.offsetScale;
+            ImGui::DragFloat("Normal offset", &l_OffsetScale, 0.001f, 0.01f, 0.1f);
+            if (l_OffsetScale != normalPushConstants.offsetScale)
+            {
+                normalPushConstants.offsetScale = l_OffsetScale;
+                normalNeedsRebuild = true;
+            }
+        }
+
+        ImGui::Separator();
+    }
+
+    // ComboBox
+    ImGui::BeginDisabled(!includeNormal);
+    constexpr std::array<const char*, 2> l_ImageNames = { "Noise", "Normal" };
+    if (ImGui::BeginCombo("Image", l_ImageNames[m_ImagePreview]))
+    {
+        for (int i = 0; i < l_ImageNames.size(); i++)
+        {
+            const bool l_Selected = (m_ImagePreview == i);
+            if (ImGui::Selectable(l_ImageNames[i], l_Selected))
+            {
+                m_ImagePreview = static_cast<ImagePreview>(i);
+            }
+            if (l_Selected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+
+    switch (m_ImagePreview)
+    {
+    case HEIGHTMAP:
+        if (imguiHeightmapDescriptorSet == VK_NULL_HANDLE)
+            break;
+        {
+            ImGui::Image(reinterpret_cast<ImTextureID>(imguiHeightmapDescriptorSet), ImVec2(256, 256));
+        }
+        break;
+    case NORMALMAP:
+        if (imguiNormalmapDescriptorSet == VK_NULL_HANDLE)
+            break;
+        {
+            ImGui::Image(reinterpret_cast<ImTextureID>(imguiNormalmapDescriptorSet), ImVec2(256, 256));
+        }
+        break;
+    }
+
+    ImGui::End();
 }
 
 void NoiseEngine::NoiseObject::cleanup()
@@ -188,60 +369,20 @@ void NoiseEngine::initializeImgui() const
 
 void NoiseEngine::drawImgui()
 {
-    if (m_CurrentNoiseImgui != nullptr)
-    {
-        bool l_ShowImagePanel = true;
-        ImGui::Begin("Images", &l_ShowImagePanel);
-        if (!l_ShowImagePanel)
-        {
-            m_CurrentNoiseImgui = nullptr;
-            return;
-        }
 
-        // ComboBox
-        ImGui::BeginDisabled(!m_CurrentNoiseImgui->includeNormal);
-        constexpr std::array<const char*, 2> l_ImageNames = { "Noise", "Normal" };
-        if (ImGui::BeginCombo("Image", l_ImageNames[m_ImagePreview]))
-        {
-            for (int i = 0; i < l_ImageNames.size(); i++)
-            {
-                const bool l_Selected = (m_ImagePreview == i);
-                if (ImGui::Selectable(l_ImageNames[i], l_Selected))
-                {
-                    m_ImagePreview = static_cast<ImagePreview>(i);
-                }
-                if (l_Selected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::EndDisabled();
-
-        switch (m_ImagePreview)
-        {
-        case HEIGHTMAP:
-            if (m_CurrentNoiseImgui->imguiHeightmapDescriptorSet == VK_NULL_HANDLE)
-                break;
-            {
-                ImGui::Image(reinterpret_cast<ImTextureID>(m_CurrentNoiseImgui->imguiHeightmapDescriptorSet), ImVec2(256, 256));
-            }
-            break;
-        case NORMALMAP:
-            if (m_CurrentNoiseImgui->imguiNormalmapDescriptorSet == VK_NULL_HANDLE)
-                break;
-            {
-                ImGui::Image(reinterpret_cast<ImTextureID>(m_CurrentNoiseImgui->imguiNormalmapDescriptorSet), ImVec2(256, 256));
-            }
-            break;
-        }
-        ImGui::End();
-    }
 }
 
-void NoiseEngine::updateNoise(const VulkanCommandBuffer& p_CmdBuffer, const NoiseObject& p_Object) const
+void NoiseEngine::recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
+    recalculateNoise(p_CmdBuffer, p_Object);
+    recalculateNormal(p_CmdBuffer, p_Object);
+}
+
+void NoiseEngine::recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
+{
+    if (!p_Object.noiseNeedsRebuild)
+        return;
+
     VulkanDevice& l_Device = m_Engine.getDevice();
     
     VulkanImage& l_HeightmapImage = l_Device.getImage(p_Object.noiseImage.image);
@@ -266,15 +407,20 @@ void NoiseEngine::updateNoise(const VulkanCommandBuffer& p_CmdBuffer, const Nois
     l_ExitBarrierBuilder.addImageMemoryBarrier(p_Object.noiseImage.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, l_ComputeFamilyIndex, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     p_CmdBuffer.cmdPipelineBarrier(l_ExitBarrierBuilder);
     l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    p_Object.noiseNeedsRebuild = false;
 }
 
-void NoiseEngine::updateNormal(const VulkanCommandBuffer& p_CmdBuffer, const NoiseObject& p_Object) const
+void NoiseEngine::recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
     if (!p_Object.includeNormal)
     {
         LOG_WARN("Tried to update normal map of noise object with image ", p_Object.noiseImage.image, ", but this noise object does not include normal");
         return;
     }
+
+    if (!p_Object.normalNeedsRebuild)
+        return;
 
     VulkanDevice& l_Device = m_Engine.getDevice();
 
@@ -302,4 +448,6 @@ void NoiseEngine::updateNormal(const VulkanCommandBuffer& p_CmdBuffer, const Noi
     p_CmdBuffer.cmdPipelineBarrier(l_ExitBarrierBuilder);
     l_NormalmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     l_NormalmapImage.setQueue(l_GraphicsFamilyIndex);
+
+    p_Object.normalNeedsRebuild = false;
 }

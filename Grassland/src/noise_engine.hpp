@@ -1,4 +1,5 @@
 #pragma once
+#include <__msvc_string_view.hpp>
 #include <glm/glm.hpp>
 #include <Volk/volk.h>
 
@@ -16,6 +17,9 @@ public:
         alignas(8) glm::uvec2 size;
         alignas(4) float w;
         alignas(4) float scale = 4.f;
+        alignas(4) uint32_t octaves = 3;
+        alignas(4) float persistence = 5.f;
+        alignas(4) float lacunarity = 3.f;
     };
 
     struct NormalPushConstantData
@@ -40,6 +44,11 @@ public:
 
         bool includeNormal = false;
 
+        bool noiseHotReload = true;
+        bool noiseNeedsRebuild = true;
+        bool normalHotReload = true;
+        bool normalNeedsRebuild = true;
+
         NoisePushConstantData noisePushConstants{};
         NormalPushConstantData normalPushConstants{};
 
@@ -51,14 +60,40 @@ public:
         VkDescriptorSet imguiHeightmapDescriptorSet = VK_NULL_HANDLE;
         VkDescriptorSet imguiNormalmapDescriptorSet = VK_NULL_HANDLE;
 
-
         void initialize(uint32_t p_Size, Engine& p_Engine, bool p_IncludeNormal);
-        void initializeImgui(Engine& p_Engine);
+        void initializeImgui();
+        [[nodiscard]] bool isNoiseDirty() const { return noiseNeedsRebuild; }
+        [[nodiscard]] bool isNormalDirty() const { return normalNeedsRebuild && includeNormal; }
+        [[nodiscard]] bool isDirty() const { return isNoiseDirty() || isNormalDirty(); }
+
+        void updatePatchSize(float p_PatchSize);
+        void updateGridSize(uint32_t p_GridSize);
+        void updateHeightScale(float p_HeightScale);
+        void updateOffset(glm::vec2 p_Offset);
+
+        void drawImgui(std::string_view p_NoiseName);
 
         void cleanup();
+        void toggleImgui() { m_ShowWindow = !m_ShowWindow; }
+
+        void overridePushConstant(const NoisePushConstantData& p_NewPush) { noisePushConstants = p_NewPush; }
 
     private:
         NoiseEngine* m_NoiseEngine = nullptr;
+
+        bool m_ShowWindow = false;
+
+        glm::vec2 m_NoiseOffset = { 0.0f, 0.0f };
+        bool m_WAnimated = false;
+        float m_WSpeed = 0.1f;
+        float m_WOffset = 0.0f;
+        float m_W = 0.0f;
+        
+        enum ImagePreview : uint8_t
+        {
+            HEIGHTMAP,
+            NORMALMAP
+        } m_ImagePreview = HEIGHTMAP;
 
         friend class NoiseEngine;
     };
@@ -71,16 +106,13 @@ public:
 
     [[nodiscard]] Engine& getEngine() const { return m_Engine; }
 
-    [[nodiscard]] NoiseObject* getImguiObject() const { return m_CurrentNoiseImgui; }
-
     void drawImgui();
 
-    void setImguiObject(NoiseObject* p_Object) { m_CurrentNoiseImgui = p_Object; }
-    
-    void updateNoise(const VulkanCommandBuffer& p_CmdBuffer, const NoiseObject& p_Object) const;
-    void updateNormal(const VulkanCommandBuffer& p_CmdBuffer, const NoiseObject& p_Object) const;
+    void recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
 
 private:
+    void recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
+    void recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
     Engine& m_Engine;
 
     ResourceID m_ComputeNoisePipelineID = UINT32_MAX;
@@ -91,14 +123,6 @@ private:
     ResourceID m_ComputeNormalDescriptorSetLayoutID = UINT32_MAX;
 
 private:
-    NoiseObject* m_CurrentNoiseImgui = nullptr;
-
-    enum ImagePreview : uint8_t
-    {
-        HEIGHTMAP,
-        NORMALMAP
-    } m_ImagePreview = HEIGHTMAP;
-
     friend struct NoiseObject;
 };
 

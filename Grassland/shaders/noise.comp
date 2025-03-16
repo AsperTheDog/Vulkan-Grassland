@@ -4,10 +4,13 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(binding = 0, r32f) uniform image2D noiseTexture;
 
 layout(push_constant) uniform PushConstants {
-    vec2 offsets; // 2D offset applied to the input coordinate
-    uvec2 size;   // Image size
-    float w;      // Third dimension value (can be animated)
-    float scale;  // Scale factor to zoom in/out the noise
+    vec2 offsets;       // 2D offset applied to the input coordinate
+    uvec2 size;         // Image size
+    float w;            // Third dimension value (can be animated)
+    float scale;        // Scale factor to zoom in/out the noise
+    uint octaves;       // Number of octaves
+    float persistence;  // Persistence value
+    float lacunarity;   // Lacunarity value
 } pushConstants;
 
 // Source: https://github.com/stegu/psrdnoise/blob/main/src/psrddnoise2.glsl
@@ -117,7 +120,16 @@ void main() {
     vec2 gradient;
     vec3 secondDerivatives;
 
-    float noiseValue = psrddnoise(uv, period, pushConstants.w, gradient, secondDerivatives);
+    // Calculate noise with octaves
+    float noiseValue = 0.0;
+    float amplitude = 1.0;
+    for (uint i = 0; i < pushConstants.octaves; i++) {
+        noiseValue += psrddnoise(uv, period, pushConstants.w, gradient, secondDerivatives) * amplitude;
+        uv *= pushConstants.lacunarity;
+        amplitude /= pushConstants.persistence;
+    }
+
+    noiseValue = (noiseValue + 1.0) / 2.0;
 
     imageStore(noiseTexture, pixelCoord, vec4(noiseValue, 0.0, 0.0, 0.0));
 }

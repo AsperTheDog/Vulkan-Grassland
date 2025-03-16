@@ -2,34 +2,48 @@
 
 #include "camera.hpp"
 #include "camera.hpp"
+#include "camera.hpp"
+#include "camera.hpp"
+#include "camera.hpp"
 #include "engine.hpp"
 #include "vertex.hpp"
 #include "vulkan_device.hpp"
 
-void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32_t, 4> p_TileGridSizes, const std::array<uint32_t, 4> p_Densities)
+void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const std::array<uint32_t, 4> p_Densities)
 {
-    m_HeightmapID = p_Heightmap;
-
     m_TileGridSizes = p_TileGridSizes;
     m_ImguiGridSizes = p_TileGridSizes;
     m_GrassDensities = p_Densities;
     m_ImguiGrassDensities = p_Densities;
+    
+    m_HeightNoise.overridePushConstant({
+        .scale = 20.f,
+        .octaves = 4,
+        .persistence = 1.5f,
+        .lacunarity = 3.f,
+    });
+    m_HeightNoise.initialize(512, m_Engine, false);
 
     VulkanDevice& l_Device = m_Engine.getDevice();
 
     {
         {
-            std::array<VkDescriptorSetLayoutBinding, 2> l_Bindings;
+            std::array<VkDescriptorSetLayoutBinding, 3> l_Bindings;
             l_Bindings[0].binding = 0;
             l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             l_Bindings[0].descriptorCount = 1;
             l_Bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             l_Bindings[0].pImmutableSamplers = nullptr;
             l_Bindings[1].binding = 1;
-            l_Bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            l_Bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             l_Bindings[1].descriptorCount = 1;
             l_Bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             l_Bindings[1].pImmutableSamplers = nullptr;
+            l_Bindings[2].binding = 2;
+            l_Bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            l_Bindings[2].descriptorCount = 1;
+            l_Bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            l_Bindings[2].pImmutableSamplers = nullptr;
 
             m_ComputeDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
         }
@@ -37,12 +51,18 @@ void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32
         m_ComputeDescriptorSetID = l_Device.createDescriptorSet(m_Engine.getDescriptorPoolID(), m_ComputeDescriptorSetLayoutID);
 
         const VkDescriptorImageInfo l_InstanceDataHeightmapInfo{
-            .sampler = *l_Device.getImage(m_HeightmapID.image).getSampler(m_HeightmapID.sampler),
-            .imageView = *l_Device.getImage(m_HeightmapID.image).getImageView(m_HeightmapID.view),
+            .sampler = *l_Device.getImage(m_Engine.getHeightmap().noiseImage.image).getSampler(m_Engine.getHeightmap().noiseImage.sampler),
+            .imageView = *l_Device.getImage(m_Engine.getHeightmap().noiseImage.image).getImageView(m_Engine.getHeightmap().noiseImage.view),
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         };
 
-        std::array<VkWriteDescriptorSet, 1> l_DescriptorWrite{};
+        const VkDescriptorImageInfo l_InstanceGrassHeightInfo{
+            .sampler = *l_Device.getImage(m_HeightNoise.noiseImage.image).getSampler(m_HeightNoise.noiseImage.sampler),
+            .imageView = *l_Device.getImage(m_HeightNoise.noiseImage.image).getImageView(m_HeightNoise.noiseImage.view),
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+
+        std::array<VkWriteDescriptorSet, 2> l_DescriptorWrite{};
     
         l_DescriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         l_DescriptorWrite[0].dstSet = *l_Device.getDescriptorSet(m_ComputeDescriptorSetID);
@@ -51,6 +71,14 @@ void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32
         l_DescriptorWrite[0].descriptorCount = 1;
         l_DescriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         l_DescriptorWrite[0].pImageInfo = &l_InstanceDataHeightmapInfo;
+    
+        l_DescriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        l_DescriptorWrite[1].dstSet = *l_Device.getDescriptorSet(m_ComputeDescriptorSetID);
+        l_DescriptorWrite[1].dstBinding = 1;
+        l_DescriptorWrite[1].dstArrayElement = 0;
+        l_DescriptorWrite[1].descriptorCount = 1;
+        l_DescriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        l_DescriptorWrite[1].pImageInfo = &l_InstanceGrassHeightInfo;
 
         l_Device.updateDescriptorSets(l_DescriptorWrite);
     }
@@ -94,6 +122,7 @@ void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32
         VulkanBinding l_InstanceBinding{ 0, VK_VERTEX_INPUT_RATE_INSTANCE, sizeof(InstanceElem)};
         l_InstanceBinding.addAttribDescription(VK_FORMAT_R32G32B32_SFLOAT, offsetof(InstanceElem, position));
         l_InstanceBinding.addAttribDescription(VK_FORMAT_R32_SFLOAT, offsetof(InstanceElem, rotation));
+        l_InstanceBinding.addAttribDescription(VK_FORMAT_R32_SFLOAT, offsetof(InstanceElem, height));
 
         VulkanBinding l_VertexBinding{ 1, VK_VERTEX_INPUT_RATE_VERTEX, sizeof(Vertex) };
         l_VertexBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, position));
@@ -208,7 +237,7 @@ void GrassEngine::initalize(const ImageData p_Heightmap, const std::array<uint32
 
 void GrassEngine::initializeImgui()
 {
-
+    m_HeightNoise.initializeImgui();
 }
 
 void GrassEngine::update(const glm::vec2 p_CameraTile)
@@ -216,37 +245,45 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
     if (m_CurrentTile != p_CameraTile)
     {
         m_CurrentTile = p_CameraTile;
-        m_Engine.setGrassDirty();
+        m_NeedsUpdate = true;
     }
+
+    if (m_HeightNoise.isNoiseDirty())
+        m_NeedsUpdate = true;
 }
 
 void GrassEngine::updateTileGridSize(const std::array<uint32_t, 4> p_TileGridSizes)
 {
     m_TileGridSizes = p_TileGridSizes;
-    m_Engine.setGrassDirty();
+    m_NeedsUpdate = true;
     m_NeedsRebuild = true;
 }
 
 void GrassEngine::updateGrassDensity(const std::array<uint32_t, 4> p_NewDensities)
 {
     m_GrassDensities = p_NewDensities;
-    m_Engine.setGrassDirty();
+    m_NeedsUpdate = true;
     m_NeedsRebuild = true;
 }
 
-void GrassEngine::changeCurrentCenter(const glm::ivec2& p_NewCenter)
+void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::vec2 p_GridExtent)
 {
     m_CurrentTile = p_NewCenter;
-    m_Engine.setGrassDirty();
+    m_HeightNoise.updateOffset(p_GridExtent);
+    m_NeedsUpdate = true;
 }
 
 void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const float p_GridExtent, const float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex)
 {
+    if (!m_NeedsUpdate)
+        return;
+
     if (m_NeedsRebuild)
     {
         rebuildResources();
-        m_NeedsRebuild = false;
     }
+
+    m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_HeightNoise);
 
     p_CmdBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineID);
     p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineLayoutID, m_ComputeDescriptorSetID);
@@ -255,12 +292,14 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
 
     const ComputePushConstantData l_PushConstants{
         .centerPos = m_CurrentTile,
-        .worldOffset = glm::vec2(m_CurrentTile) - glm::vec2(p_GridExtent / 2.0),
+        .worldOffset = glm::vec2(m_CurrentTile) - glm::vec2(p_GridExtent / 2.0f),
         .tileGridSizes = glm::uvec4(m_TileGridSizes[0], m_TileGridSizes[1], m_TileGridSizes[2], m_TileGridSizes[3]),
         .tileDensities = glm::uvec4(m_GrassDensities[0], m_GrassDensities[1], m_GrassDensities[2], m_GrassDensities[3]),
         .tileSize = p_TileSize,
         .gridExtent = p_GridExtent,
-        .heightmapScale = p_HeightmapScale
+        .heightmapScale = p_HeightmapScale,
+        .grassBaseHeight = m_ImguiGrassBaseHeight,
+        .grassHeightVariation = m_ImguiGrassHeightVariation
     };
 
     VulkanBuffer& l_InstanceDataBuffer = m_Engine.getDevice().getBuffer(m_InstanceDataBufferID);
@@ -278,16 +317,16 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
     p_CmdBuffer.cmdPipelineBarrier(l_BufferBarrierExit);
     l_InstanceDataBuffer.setQueue(m_Engine.getGraphicsQueuePos().familyIndex);
 
-    // Transition height and normal maps for rendering
-
     VulkanDevice& l_Device = m_Engine.getDevice();
-    VulkanImage& l_HeightmapImage = l_Device.getImage(m_HeightmapID.image);
+    VulkanImage& l_HeightmapImage = l_Device.getImage(m_Engine.getHeightmap().noiseImage.image);
 
     VulkanMemoryBarrierBuilder l_ExitBarrierBuilder2{m_Engine.getDevice().getID(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0};
-    l_ExitBarrierBuilder2.addImageMemoryBarrier(m_HeightmapID.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, p_GraphicsQueueFamilyIndex, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT);
+    l_ExitBarrierBuilder2.addImageMemoryBarrier(m_Engine.getHeightmap().noiseImage.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, p_GraphicsQueueFamilyIndex, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT);
     p_CmdBuffer.cmdPipelineBarrier(l_ExitBarrierBuilder2);
     l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     l_HeightmapImage.setQueue(p_GraphicsQueueFamilyIndex);
+
+    m_NeedsUpdate = false;
 }
 
 void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
@@ -317,12 +356,16 @@ void GrassEngine::drawImgui()
 {
     ImGui::Begin("Grass");
 
+    if (ImGui::Button("Recompute"))
+    {
+        updateTileGridSize(m_ImguiGridSizes);
+        updateGrassDensity(m_ImguiGrassDensities);
+    }
+
     ImGui::InputScalar("Grid Rings Close", ImGuiDataType_U32, &m_ImguiGridSizes[0]);
     ImGui::InputScalar("Grid Rings Medium", ImGuiDataType_U32, &m_ImguiGridSizes[1]);
     ImGui::InputScalar("Grid Rings Far", ImGuiDataType_U32, &m_ImguiGridSizes[2]);
     ImGui::InputScalar("Grid Rings Distant", ImGuiDataType_U32, &m_ImguiGridSizes[3]);
-    if (ImGui::Button("Update##Radius"))
-        updateTileGridSize(m_ImguiGridSizes);
 
     ImGui::Separator();
 
@@ -330,10 +373,17 @@ void GrassEngine::drawImgui()
     ImGui::InputScalar("Grass Density Medium", ImGuiDataType_U32, &m_ImguiGrassDensities[1]);
     ImGui::InputScalar("Grass Density Far", ImGuiDataType_U32, &m_ImguiGrassDensities[2]);
     ImGui::InputScalar("Grass Density Distant", ImGuiDataType_U32, &m_ImguiGrassDensities[3]);
-    if (ImGui::Button("Update##Density"))
-        updateGrassDensity(m_ImguiGrassDensities);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat("Grass Base Height", &m_ImguiGrassBaseHeight, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Grass Height Variation", &m_ImguiGrassHeightVariation, 0.01f, 0.0f, 1.0f);
+    if (ImGui::Button("Edit Grass Height"))
+        m_HeightNoise.toggleImgui();
 
     ImGui::End();
+
+    m_HeightNoise.drawImgui("Grass Height");
 }
 
 uint32_t GrassEngine::getInstanceCount() const
@@ -378,7 +428,7 @@ void GrassEngine::rebuildResources()
     const std::array<VkWriteDescriptorSet, 1> l_DescriptorWrite{ VkWriteDescriptorSet{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = *l_Device.getDescriptorSet(m_ComputeDescriptorSetID),
-        .dstBinding = 1,
+        .dstBinding = 2,
         .dstArrayElement = 0,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -386,4 +436,6 @@ void GrassEngine::rebuildResources()
     }};
 
     l_Device.updateDescriptorSets(l_DescriptorWrite);
+
+    m_NeedsRebuild = false;
 }

@@ -2,13 +2,15 @@
 layout(local_size_x = 256) in;
 
 layout(binding = 0) uniform sampler2D heightmap;
+layout(binding = 1) uniform sampler2D grassHeightNoise;
 
 struct GrassInstance {
     vec3 position;
     float rotation;
+    float height;
 };
 
-layout(binding = 1) buffer GrassBuffer {
+layout(binding = 2) buffer GrassBuffer {
     GrassInstance grassPositions[];
 };
 
@@ -20,6 +22,8 @@ layout(push_constant) uniform PushConstants {
     float tileSize;
     float gridExtent;
     float heightmapScale;
+    float grassBaseHeight;
+    float grassHeightVariation;
 } pushConstants;
 
 struct TileData {
@@ -110,6 +114,9 @@ void main()
     vec2 heightmapUV = (pos.xz - pushConstants.worldOffset) / pushConstants.gridExtent;
     pos.y = -texture(heightmap, heightmapUV).r * pushConstants.heightmapScale;
 
+    float height = texture(grassHeightNoise, heightmapUV).r * pushConstants.grassHeightVariation + pushConstants.grassBaseHeight;
+
     grassPositions[globalIndex].position = pos;
     grassPositions[globalIndex].rotation = random(pos.x + pos.z) * 2.0 * 3.14159265359;
+    grassPositions[globalIndex].height = height;
 }

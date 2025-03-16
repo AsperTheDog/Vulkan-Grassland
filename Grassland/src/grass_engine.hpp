@@ -31,6 +31,7 @@ public:
     {
         alignas(16) glm::vec3 position;
         alignas(4) float rotation;
+        alignas(4) float height;
     };
 
     struct ComputePushConstantData
@@ -42,11 +43,13 @@ public:
         alignas(4) float tileSize;
         alignas(4) float gridExtent;
         alignas(4) float heightmapScale;
+        alignas(4) float grassBaseHeight;
+        alignas(4) float grassHeightVariation;
     };
 
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(ImageData p_Heightmap, std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
+    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
     void initializeImgui();
 
     void update(glm::vec2 p_CameraTile);
@@ -54,7 +57,8 @@ public:
     void updateTileGridSize(std::array<uint32_t, 4> p_TileGridSizes);
     void updateGrassDensity(std::array<uint32_t, 4> p_NewDensities);
 
-    void changeCurrentCenter(const glm::ivec2& p_NewCenter);
+    void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_GridExtent);
+    void setDirty() { m_NeedsUpdate = true; }
 
     void recompute(const VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
     void render(const VulkanCommandBuffer& p_CmdBuffer) const;
@@ -63,6 +67,7 @@ public:
 
     [[nodiscard]] uint32_t getInstanceCount() const;
     [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
+    [[nodiscard]] bool isDirty() const { return m_NeedsUpdate; }
 
 private:
     Engine& m_Engine;
@@ -75,13 +80,16 @@ private:
     std::array<uint32_t, 4> m_ImguiGridSizes;
     std::array<uint32_t, 4> m_ImguiGrassDensities;
 
+    float m_ImguiGrassBaseHeight = 1.5f;
+    float m_ImguiGrassHeightVariation = 1.f;
+
+    bool m_NeedsUpdate = true;
     bool m_NeedsRebuild = true;
 
 private:
-
     void rebuildResources();
 
-    ImageData m_HeightmapID{};
+    NoiseEngine::NoiseObject m_HeightNoise{};
 
     ResourceID m_InstanceDataBufferID = UINT32_MAX;
 

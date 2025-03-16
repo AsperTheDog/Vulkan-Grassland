@@ -22,7 +22,7 @@ public:
         alignas(4)  float maxTessLevel = 64.f;
         alignas(4)  float tessFactor = 0.002f;
         alignas(4)  float tessSlope = 0.05f;
-        alignas(4)  float heightScale = 10.f;
+        alignas(4)  float heightScale = 15.f;
         alignas(16) glm::mat4 mvp;
         alignas(16) glm::vec3 color = { 0.0f, 0.15f, 0.0f };
 
@@ -45,35 +45,29 @@ public:
 public:
     explicit PlaneEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initialize(uint32_t p_ImgSize);
+    void initialize();
     void initializeImgui();
 
-    void update();
+    void update(glm::vec2 p_CamTile);
     void render(const VulkanCommandBuffer& p_CmdBuffer) const;
 
     void cleanup();
 
     void drawImgui();
 
-    void updateNoise(const VulkanCommandBuffer& p_CmdBuffer) const;
-    void updateNormal(const VulkanCommandBuffer& p_CmdBuffer) const;
-
-    [[nodiscard]] NoiseEngine::NoiseObject& getNoise() { return m_Noise; }
-
     [[nodiscard]] float getTileSize() const { return m_PushConstants.patchSize; }
     [[nodiscard]] float getGridExtent() const { return m_PushConstants.patchSize * m_PushConstants.gridSize; }
-    [[nodiscard]] float getHeightmapScale() const { return m_PushConstants.heightScale; }
+    [[nodiscard]] float getHeightScale() const { return m_PushConstants.heightScale; }
     [[nodiscard]] glm::vec2 getCameraTile() const { return m_PushConstants.cameraTile; }
+    [[nodiscard]] uint32_t getGridSize() const { return m_PushConstants.gridSize; }
 
 private:
     void createPipelines();
-    void createHeightmapDescriptorSets(uint32_t p_TextureSize);
+    void createHeightmapDescriptorSets();
 
     Engine& m_Engine;
 
 private:
-    NoiseEngine::NoiseObject m_Noise{};
-
     ResourceID m_TessellationPipelineID = UINT32_MAX;
     ResourceID m_TessellationPipelineWFID = UINT32_MAX;
     ResourceID m_TessellationPipelineLayoutID = UINT32_MAX;
@@ -82,14 +76,6 @@ private:
 
 private:
     PushConstantData m_PushConstants{};
-
-    glm::vec2 m_NoiseOffset = { 0.0f, 0.0f };
-    bool m_NoiseHotReload = true;
-    bool m_NormalHotReload = true;
-    bool m_WAnimated = false;
-    float m_WSpeed = 0.1f;
-    float m_WOffset = 0.0f;
-    float m_W = 0.0f;
 
     bool m_Wireframe = false;
 };

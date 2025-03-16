@@ -1,41 +1,44 @@
 #include "camera.hpp"
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include "camera.hpp"
+#include "camera.hpp"
+
 #include <algorithm>
 #include <glm/gtx/transform.hpp>
 
 #include <SDL2/SDL_keycode.h>
 
 Camera::Camera(const glm::vec3 pos, const glm::vec3 dir, const float fov, const float near, const float far)
-	: m_position(pos), m_front(dir), m_fov(fov), m_near(near), m_far(far), m_viewDirty(true), m_projDirty(true)
+	: m_Position(pos), m_Front(dir), m_fov(fov), m_near(near), m_far(far), m_viewDirty(true), m_projDirty(true)
 {
 
 }
 
 void Camera::move(const glm::vec3 dir)
 {
-	m_position += dir;
+	m_Position += dir;
 	calculateRightVector();
 	m_viewDirty = true;
 }
 
 void Camera::lookAt(const glm::vec3 target)
 {
-	m_front = glm::normalize(target - m_position);
+	m_Front = glm::normalize(target - m_Position);
 	calculateRightVector();
 	m_viewDirty = true;
 }
 
 void Camera::setPosition(const glm::vec3 pos)
 {
-	m_position = pos;
+	m_Position = pos;
 	calculateRightVector();
 	m_viewDirty = true;
 }
 
 void Camera::setDir(const glm::vec3 dir)
 {
-	m_front = dir;
+	m_Front = dir;
 	calculateRightVector();
 	m_viewDirty = true;
 }
@@ -56,24 +59,32 @@ void Camera::setProjectionData(const float fov, const float near, const float fa
 
 glm::vec3 Camera::getPosition() const
 {
-	return m_position;
+	return m_Position;
 }
 
 glm::vec4 Camera::getPositionV4() const
 {
-	return {m_position, 1.0f};
+	return {m_Position, 1.0f};
 }
 
 glm::vec3 Camera::getDir() const
 {
-	return m_front;
+	return m_Front;
+}
+
+glm::vec2 Camera::getTiledPosition(const float p_TileSize) const
+{
+    glm::vec2 l_CameraTile = glm::vec2(m_Position.x, m_Position.z);
+    l_CameraTile = glm::round(l_CameraTile / p_TileSize) * p_TileSize;
+
+    return l_CameraTile;
 }
 
 glm::mat4& Camera::getViewMatrix()
 {
 	if (m_viewDirty)
 	{
-		m_viewMatrix = glm::lookAt(m_position, m_position + m_front, glm::vec3(0, 1, 0));
+		m_viewMatrix = glm::lookAt(m_Position, m_Position + m_Front, glm::vec3(0, 1, 0));
 		m_viewDirty = false;
 	}
 
@@ -192,11 +203,11 @@ void Camera::updateEvents(const float delta)
 	glm::vec3 moveDir(0.0f);
 	if (m_wPressed)
 	{
-		moveDir += m_front;
+		moveDir += m_Front;
 	}
 	if (m_sPressed)
 	{
-		moveDir -= m_front;
+		moveDir -= m_Front;
 	}
 	if (m_aPressed)
 	{
@@ -223,7 +234,7 @@ void Camera::updateEvents(const float delta)
 
 void Camera::calculateRightVector()
 {
-	m_right = glm::normalize(glm::cross(m_front, glm::vec3(0.0f, 1.0f, 0.0f)));
+	m_right = glm::normalize(glm::cross(m_Front, glm::vec3(0.0f, 1.0f, 0.0f)));
 }
 
 void Camera::setMouseCaptured(const bool captured)

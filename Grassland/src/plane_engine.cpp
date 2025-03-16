@@ -7,57 +7,22 @@
 #include "ext/vulkan_swapchain.hpp"
 #include "utils/logger.hpp"
 
-void PlaneEngine::initialize(const uint32_t p_ImgSize)
+void PlaneEngine::initialize()
 {
-    createHeightmapDescriptorSets(p_ImgSize);
+    createHeightmapDescriptorSets();
     createPipelines();
 }
 
 void PlaneEngine::initializeImgui()
 {
-    m_Noise.initializeImgui(m_Engine);
+
 }
 
-void PlaneEngine::update()
+void PlaneEngine::update(const glm::vec2 p_CamTile)
 {
-    if (m_NormalHotReload)
-    {
-        if (m_PushConstants.patchSize != m_Noise.normalPushConstants.patchSize)
-        {
-            m_Noise.normalPushConstants.patchSize = m_PushConstants.patchSize;
-            m_Engine.setPlaneNormalDirty();
-        }
-        if (m_PushConstants.gridSize != m_Noise.normalPushConstants.gridSize)
-        {
-            m_Noise.normalPushConstants.gridSize = m_PushConstants.gridSize;
-            m_Engine.setPlaneNormalDirty();
-        }
-        if (m_PushConstants.heightScale != m_Noise.normalPushConstants.heightScale)
-        {
-            m_Noise.normalPushConstants.heightScale = m_PushConstants.heightScale;
-            m_Engine.setPlaneNormalDirty();
-        }
-    }
-
     m_PushConstants.mvp = m_Engine.getCamera().getVPMatrix();
     m_PushConstants.cameraPos = m_Engine.getCamera().getPosition();
-
-    glm::vec2 l_CameraTile = glm::vec2(m_PushConstants.cameraPos.x, m_PushConstants.cameraPos.z);
-    l_CameraTile = glm::round(l_CameraTile / m_PushConstants.patchSize) * m_PushConstants.patchSize;
-    if (l_CameraTile != m_PushConstants.cameraTile)
-    {
-        if (m_NoiseHotReload)
-            m_Engine.setPlaneNoiseDirty();
-        m_PushConstants.cameraTile = l_CameraTile;
-    }
-
-    if (m_Engine.isNoiseDirty() && m_NormalHotReload)
-    {
-        m_Engine.setPlaneNormalDirty();
-    }
-
-    const float l_WorldExtent = m_PushConstants.gridSize * m_PushConstants.patchSize;
-    m_Noise.noisePushConstants.offset = m_NoiseOffset + (m_PushConstants.cameraTile / l_WorldExtent);
+    m_PushConstants.cameraTile = p_CamTile;
 }
 
 void PlaneEngine::render(const VulkanCommandBuffer& p_CmdBuffer) const
@@ -91,7 +56,7 @@ void PlaneEngine::render(const VulkanCommandBuffer& p_CmdBuffer) const
 
 void PlaneEngine::cleanup()
 {
-    m_Noise.cleanup();
+
 }
 
 void PlaneEngine::drawImgui()
@@ -117,89 +82,7 @@ void PlaneEngine::drawImgui()
     ImGui::ColorEdit3("Color", &m_PushConstants.color.x);
     ImGui::Separator();
     ImGui::Checkbox("Wireframe", &m_Wireframe);
-    ImGui::Separator();
-    ImGui::Checkbox("Noise Hot Reload", &m_NoiseHotReload);
-    if (!m_NoiseHotReload)
-    {
-        ImGui::DragFloat2("Noise offset", &m_Noise.noisePushConstants.offset.x, 0.01f);
-        ImGui::DragFloat("Noise scale", &m_Noise.noisePushConstants.scale, 0.01f);
-        ImGui::DragFloat("Noise W", &m_Noise.noisePushConstants.w, 0.01f);
-        if (ImGui::Button("Recompute Noise"))
-        {
-            m_Engine.setPlaneNoiseDirty();
-        }
-    }
-    else
-    {
-        glm::vec2 l_Offset = m_NoiseOffset;
-        ImGui::DragFloat2("Noise offset", &l_Offset.x, 0.01f);
-        if (l_Offset != m_NoiseOffset)
-        {
-            m_NoiseOffset = l_Offset;
-            m_Engine.setPlaneNoiseDirty();
-        }
-        float l_Scale = m_Noise.noisePushConstants.scale;
-        ImGui::DragFloat("Noise scale", &l_Scale, 1.f, 1.f, 100.f);
-        if (l_Scale != m_Noise.noisePushConstants.scale)
-        {
-            m_Noise.noisePushConstants.scale = l_Scale;
-            m_Engine.setPlaneNoiseDirty();
-        }
-        float l_W = m_W;
-        ImGui::DragFloat("Noise W", &l_W, 0.01f);
-        if (l_W != m_W)
-        {
-            m_W = l_W;
-            m_Engine.setPlaneNoiseDirty();
-        }
-        ImGui::Checkbox("Animated W", &m_WAnimated);
-        if (m_WAnimated)
-        {
-            ImGui::DragFloat("W speed", &m_WSpeed, 0.01f);
-
-            m_WOffset += m_WSpeed * ImGui::GetIO().DeltaTime;
-            m_Noise.noisePushConstants.w = m_W + m_WOffset;
-            m_Engine.setPlaneNoiseDirty();
-        }
-    }
-    ImGui::Separator();
-    ImGui::Checkbox("Normal Hot Reload", &m_NormalHotReload);
-    if (!m_NormalHotReload)
-    {
-        ImGui::DragFloat("Normal offset", &m_Noise.normalPushConstants.offsetScale, 0.001f, 0.001f, 0.1f);
-        if (ImGui::Button("Recompute Normal"))
-        {
-            m_Engine.setPlaneNormalDirty();
-        }
-    }
-    else
-    {
-        float l_OffsetScale = m_Noise.normalPushConstants.offsetScale;
-        ImGui::DragFloat("Normal offset", &l_OffsetScale, 0.001f, 0.01f, 0.1f);
-        if (l_OffsetScale != m_Noise.normalPushConstants.offsetScale)
-        {
-            m_Noise.normalPushConstants.offsetScale = l_OffsetScale;
-            m_Engine.setPlaneNormalDirty();
-        }
-    }
-    ImGui::Separator();
-    ImGui::BeginDisabled(m_Engine.getNoiseEngine().getImguiObject() == &m_Noise);
-    if (ImGui::Button("Preview Images"))
-    {
-        m_Engine.getNoiseEngine().setImguiObject(&m_Noise);
-    }
-    ImGui::EndDisabled();
     ImGui::End();
-}
-
-void PlaneEngine::updateNoise(const VulkanCommandBuffer& p_CmdBuffer) const
-{
-    m_Engine.getNoiseEngine().updateNoise(p_CmdBuffer, m_Noise);
-}
-
-void PlaneEngine::updateNormal(const VulkanCommandBuffer& p_CmdBuffer) const
-{
-    m_Engine.getNoiseEngine().updateNormal(p_CmdBuffer, m_Noise);
 }
 
 void PlaneEngine::createPipelines()
@@ -235,7 +118,7 @@ void PlaneEngine::createPipelines()
     l_TessellationBuilder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_PATCH_LIST, VK_FALSE);
     l_TessellationBuilder.setTessellationState(4);
     l_TessellationBuilder.setViewportState(1, 1);
-    l_TessellationBuilder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    l_TessellationBuilder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE);
     l_TessellationBuilder.setMultisampleState(VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f);
     l_TessellationBuilder.setDepthStencilState(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS);
     l_TessellationBuilder.addColorBlendAttachment(l_ColorBlendAttachment);
@@ -257,12 +140,10 @@ void PlaneEngine::createPipelines()
     l_Device.freeShader(tessellationEvaluationShaderID);
 }
 
-void PlaneEngine::createHeightmapDescriptorSets(const uint32_t p_TextureSize)
+void PlaneEngine::createHeightmapDescriptorSets()
 {
     VulkanDevice& l_Device = m_Engine.getDevice();
-
-    m_Noise.initialize(p_TextureSize, m_Engine, true);
-
+     
     {
         std::array<VkDescriptorSetLayoutBinding, 2> l_Bindings;
         l_Bindings[0].binding = 0;
@@ -281,18 +162,18 @@ void PlaneEngine::createHeightmapDescriptorSets(const uint32_t p_TextureSize)
 
     m_TessellationDescriptorSetID = l_Device.createDescriptorSet(m_Engine.getDescriptorPoolID(), m_TessellationDescriptorSetLayoutID);
 
-    VulkanImage& l_HeightmapImage = l_Device.getImage(m_Noise.noiseImage.image);
-    VulkanImage& l_NormalmapImage = l_Device.getImage(m_Noise.normalImage.image);
+    VulkanImage& l_HeightmapImage = l_Device.getImage(m_Engine.getHeightmap().noiseImage.image);
+    VulkanImage& l_NormalmapImage = l_Device.getImage(m_Engine.getHeightmap().normalImage.image);
 
     std::array<VkWriteDescriptorSet, 1> l_Write{};
     std::array<VkDescriptorImageInfo, 2> l_ImageInfos;
     {
         l_ImageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        l_ImageInfos[0].imageView = *l_HeightmapImage.getImageView(m_Noise.noiseImage.view);
-        l_ImageInfos[0].sampler = *l_HeightmapImage.getSampler(m_Noise.noiseImage.sampler);
+        l_ImageInfos[0].imageView = *l_HeightmapImage.getImageView(m_Engine.getHeightmap().noiseImage.view);
+        l_ImageInfos[0].sampler = *l_HeightmapImage.getSampler(m_Engine.getHeightmap().noiseImage.sampler);
         l_ImageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        l_ImageInfos[1].imageView = *l_NormalmapImage.getImageView(m_Noise.normalImage.view);
-        l_ImageInfos[1].sampler = *l_NormalmapImage.getSampler(m_Noise.normalImage.sampler);
+        l_ImageInfos[1].imageView = *l_NormalmapImage.getImageView(m_Engine.getHeightmap().normalImage.view);
+        l_ImageInfos[1].sampler = *l_NormalmapImage.getSampler(m_Engine.getHeightmap().normalImage.sampler);
 
         l_Write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         l_Write[0].dstSet = *l_Device.getDescriptorSet(m_TessellationDescriptorSetID);
