@@ -15,12 +15,19 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
     
     m_HeightNoise.overridePushConstant({
         .scale = 20.f,
-        .octaves = 4,
-        .persistence = 1.5f,
-        .lacunarity = 3.f,
+        .octaves = 6,
+        .persistence = 1.2f,
+        .lacunarity = 2.f,
     });
-
     m_HeightNoise.initialize(512, m_Engine, false);
+
+    
+    m_WindNoise.overridePushConstant({
+        .scale = 15.f,
+        .octaves = 3,
+        .persistence = 1.1f,
+        .lacunarity = 1.3f,
+    });
     m_WindNoise.initialize(512, m_Engine, false);
 
     VulkanDevice& l_Device = m_Engine.getDevice();
@@ -284,15 +291,20 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
     if (m_CurrentTile != p_CameraTile)
     {
         m_CurrentTile = p_CameraTile;
+        
         m_NeedsUpdate = true;
     }
 
     if (m_HeightNoise.isNoiseDirty())
         m_NeedsUpdate = true;
 
-    m_PushConstants.windDir = glm::vec2(glm::sin(m_ImguiWindDirection), glm::cos(m_ImguiWindDirection));
+    m_PushConstants.windDir = glm::normalize(glm::vec2(glm::sin(m_ImguiWindDirection), glm::cos(m_ImguiWindDirection)));
 
-    m_WindNoise.shiftOffset(m_PushConstants.windDir * m_ImguiWindSpeed * ImGui::GetIO().DeltaTime);
+    m_WindOffset += m_PushConstants.windDir * m_ImguiWindSpeed * ImGui::GetIO().DeltaTime; 
+    m_WindNoise.updateOffset(m_TileOffset + m_WindOffset);
+
+    if (m_ImguiWAnimated)
+        m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime);
 }
 
 void GrassEngine::updateTileGridSize(const std::array<uint32_t, 4> p_TileGridSizes)
@@ -309,10 +321,11 @@ void GrassEngine::updateGrassDensity(const std::array<uint32_t, 4> p_NewDensitie
     m_NeedsRebuild = true;
 }
 
-void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::vec2 p_GridExtent)
+void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::vec2 p_Offset)
 {
     m_CurrentTile = p_NewCenter;
-    m_HeightNoise.updateOffset(p_GridExtent);
+    m_TileOffset = p_Offset;
+    m_HeightNoise.updateOffset(m_TileOffset);
     m_NeedsUpdate = true;
 }
 
@@ -440,6 +453,9 @@ void GrassEngine::drawImgui()
     ImGui::DragFloat("Wind Direction", &m_ImguiWindDirection, 0.1f, 0.0f, 2.0f * glm::pi<float>());
     ImGui::DragFloat("Wind Speed", &m_ImguiWindSpeed, 0.01f, 0.0f, 3.0f);
     ImGui::DragFloat("Wind Strength", &m_PushConstants.windStrength, 0.01f, 0.0f, 3.0f);
+    ImGui::Checkbox("Animate Wind W", &m_ImguiWAnimated);
+    if (m_ImguiWAnimated)
+        ImGui::DragFloat("Wind W Speed", &m_ImguiWindWSpeed, 0.001f, 0.0f, 1.0f);
     if (ImGui::Button("Edit Wind Noise"))
         m_WindNoise.toggleImgui();
 

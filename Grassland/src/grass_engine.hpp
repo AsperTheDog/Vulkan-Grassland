@@ -55,7 +55,7 @@ public:
         alignas(4) float tilt = 0.2f;
         alignas(4) float bend = 1.f;
         alignas(8) glm::vec2 windDir = {0.f, 1.f};
-        alignas(4) float windStrength = 0.1f;
+        alignas(4) float windStrength = 1.5f;
         alignas(16) glm::vec3 baseColor = { 0.0112f, 0.082f, 0.0f };
         alignas(16) glm::vec3 tipColor = { 0.25f, 0.6f, 0.0f };
         alignas(4) float colorRamp = 4.f;
@@ -82,7 +82,7 @@ public:
     void updateTileGridSize(std::array<uint32_t, 4> p_TileGridSizes);
     void updateGrassDensity(std::array<uint32_t, 4> p_NewDensities);
 
-    void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_GridExtent);
+    void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_Offset);
     void setDirty() { m_NeedsUpdate = true; }
 
     void recompute(const VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
@@ -105,10 +105,16 @@ private:
     std::array<uint32_t, 4> m_ImguiGridSizes;
     std::array<uint32_t, 4> m_ImguiGrassDensities;
 
-    float m_ImguiGrassBaseHeight = 1.5f;
-    float m_ImguiGrassHeightVariation = 1.f;
+    float m_ImguiGrassBaseHeight = 3.f;
+    float m_ImguiGrassHeightVariation = 2.f;
     float m_ImguiWindDirection = 0.f;
-    float m_ImguiWindSpeed = 0.1f;
+    float m_ImguiWindSpeed = 0.04f;
+
+    bool m_ImguiWAnimated = true;
+    float m_ImguiWindWSpeed = 0.6f;
+
+    glm::vec2 m_TileOffset{};
+    glm::vec2 m_WindOffset{};
 
     bool m_NeedsUpdate = true;
     bool m_NeedsRebuild = true;

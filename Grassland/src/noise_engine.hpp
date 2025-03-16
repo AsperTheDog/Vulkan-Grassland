@@ -72,6 +72,7 @@ public:
         void updateHeightScale(float p_HeightScale);
         void updateOffset(glm::vec2 p_Offset);
         void shiftOffset(glm::vec2 p_Offset);
+        void shiftW(float p_W);
 
         void drawImgui(std::string_view p_NoiseName);
 

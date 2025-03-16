@@ -156,6 +156,13 @@ void NoiseEngine::NoiseObject::shiftOffset(const glm::vec2 p_Offset)
     noisePushConstants.offset += m_NoiseOffset + p_Offset;
 }
 
+void NoiseEngine::NoiseObject::shiftW(const float p_W)
+{
+    if (noiseHotReload && p_W != 0.f)
+        noiseNeedsRebuild = true;
+    noisePushConstants.w += p_W;
+}
+
 void NoiseEngine::NoiseObject::drawImgui(const std::string_view p_NoiseName)
 {
     if (!m_ShowWindow)

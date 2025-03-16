@@ -26,38 +26,17 @@ layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out vec3 fragPosition;
 layout(location = 2) out float fragWeight;
 
-//mat3 rotationMatrixXZ(vec2 rotationVec, float angle) {
-//    vec3 axis = vec3(rotationVec.x, 0.0, rotationVec.y);
-//    float s = sin(angle);
-//    float c = cos(angle);
-//    float oc = 1.0 - c;
-//
-//    return mat3(
-//        oc * axis.x * axis.x + c,          oc * axis.x * axis.y,            oc * axis.x * axis.z + axis.y * s,
-//        oc * axis.x * axis.y,              c,                               oc * axis.y * axis.z,
-//        oc * axis.x * axis.z - axis.y * s, oc * axis.y * axis.z,            oc * axis.z * axis.z + c
-//    );
-//}
-
-mat3 getTotationMatrixY(float angle) {
+mat3 getRotationMatrix(vec3 axis, float angle)
+{
+    axis = normalize(axis);
     float s = sin(angle);
     float c = cos(angle);
+    float oc = 1.0 - c;
 
     return mat3(
-        c,   0.0,  s,
-        0.0, 1.0,  0.0,
-       -s,   0.0,  c
-    );
-}
-
-mat3 rotationMatrixX(float angle) {
-    float s = sin(angle);
-    float c = cos(angle);
-
-    return mat3(
-        1.0, 0.0,  0.0,
-        0.0,  c,    s,
-        0.0, -s,    c
+        vec3(axis.x * axis.x * oc + c,          axis.y * axis.x * oc - axis.z * s, axis.z * axis.x * oc + axis.y * s),
+        vec3(axis.x * axis.y * oc + axis.z * s, axis.y * axis.y * oc + c,          axis.z * axis.y * oc - axis.x * s),
+        vec3(axis.x * axis.z * oc - axis.y * s, axis.y * axis.z * oc + axis.x * s, axis.z * axis.z * oc + c)
     );
 }
 
@@ -73,15 +52,17 @@ void main() {
     vec3 fragPos = vec3(finalVertPos, 0.0);
     finalVertPos.y *= inInstanceHeight;
     
-    mat3 rotation = getTotationMatrixY(inInstRotation);
-    mat3 tiltRotation = rotationMatrixX(localTilt);
+    mat3 rotation = getRotationMatrix(vec3(0.0, 1.0, 0.0), inInstRotation);
+    mat3 tiltRotation = getRotationMatrix(vec3(1.0, 0.0, 0.0), localTilt);
 
     vec3 basePos = rotation * tiltRotation * vec3(finalVertPos, 0.0);
 
-    float windNoiseValue = texture(windNoise, uv).r;
-    vec3 windOffset = vec3(-pc.windDir.x, 0.0, -pc.windDir.y) * windNoiseValue * pc.windStrength * fragWeight;
-    
-    fragPosition = inInstPosition + basePos + windOffset;
+    float windBendIntensity = mix(0.0, texture(windNoise, uv).r * pc.windStrength, fragWeight);
+    vec3 windAxis = normalize(cross(vec3(0.0, 1.0, 0.0), vec3(-pc.windDir.x, 0.0, -pc.windDir.y)));
+    mat3 windRotation = getRotationMatrix(windAxis, windBendIntensity);
+    vec3 windBendPos = windRotation * basePos;
+
+    fragPosition = inInstPosition + windBendPos;
     fragNormal = rotation * vec3(vertexNormal, 0.0);
 
     gl_Position = pc.VPMatrix * vec4(fragPosition, 1.0);
