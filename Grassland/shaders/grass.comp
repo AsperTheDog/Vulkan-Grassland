@@ -7,6 +7,7 @@ layout(binding = 1) uniform sampler2D grassHeightNoise;
 struct GrassInstance {
     vec3 position;
     float rotation;
+    vec2 uv;
     float height;
 };
 
@@ -119,4 +120,5 @@ void main()
     grassPositions[globalIndex].position = pos;
     grassPositions[globalIndex].rotation = random(pos.x + pos.z) * 2.0 * 3.14159265359;
     grassPositions[globalIndex].height = height;
+    grassPositions[globalIndex].uv = heightmapUV;
 }

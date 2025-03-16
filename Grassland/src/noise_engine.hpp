@@ -62,6 +62,7 @@ public:
 
         void initialize(uint32_t p_Size, Engine& p_Engine, bool p_IncludeNormal);
         void initializeImgui();
+
         [[nodiscard]] bool isNoiseDirty() const { return noiseNeedsRebuild; }
         [[nodiscard]] bool isNormalDirty() const { return normalNeedsRebuild && includeNormal; }
         [[nodiscard]] bool isDirty() const { return isNoiseDirty() || isNormalDirty(); }
@@ -70,10 +71,11 @@ public:
         void updateGridSize(uint32_t p_GridSize);
         void updateHeightScale(float p_HeightScale);
         void updateOffset(glm::vec2 p_Offset);
+        void shiftOffset(glm::vec2 p_Offset);
 
         void drawImgui(std::string_view p_NoiseName);
 
-        void cleanup();
+        void cleanupImgui();
         void toggleImgui() { m_ShowWindow = !m_ShowWindow; }
 
         void overridePushConstant(const NoisePushConstantData& p_NewPush) { noisePushConstants = p_NewPush; }
@@ -102,11 +104,13 @@ public:
     explicit NoiseEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
     void initialize();
-    void initializeImgui() const;
+    void initializeImgui() const {}
+
+    void cleanupImgui() const {}
 
     [[nodiscard]] Engine& getEngine() const { return m_Engine; }
 
-    void drawImgui();
+    void drawImgui() const {}
 
     void recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
 

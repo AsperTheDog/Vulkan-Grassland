@@ -149,6 +149,13 @@ void NoiseEngine::NoiseObject::updateOffset(const glm::vec2 p_Offset)
     noisePushConstants.offset = m_NoiseOffset + p_Offset;
 }
 
+void NoiseEngine::NoiseObject::shiftOffset(const glm::vec2 p_Offset)
+{
+    if (noiseHotReload && p_Offset != glm::vec2{0.f})
+        noiseNeedsRebuild = true;
+    noisePushConstants.offset += m_NoiseOffset + p_Offset;
+}
+
 void NoiseEngine::NoiseObject::drawImgui(const std::string_view p_NoiseName)
 {
     if (!m_ShowWindow)
@@ -293,7 +300,7 @@ void NoiseEngine::NoiseObject::drawImgui(const std::string_view p_NoiseName)
     ImGui::End();
 }
 
-void NoiseEngine::NoiseObject::cleanup()
+void NoiseEngine::NoiseObject::cleanupImgui()
 {
     ImGui_ImplVulkan_RemoveTexture(imguiHeightmapDescriptorSet);
     imguiHeightmapDescriptorSet = VK_NULL_HANDLE;
@@ -362,16 +369,6 @@ void NoiseEngine::initialize()
     }
 }
 
-void NoiseEngine::initializeImgui() const
-{
-
-}
-
-void NoiseEngine::drawImgui()
-{
-
-}
-
 void NoiseEngine::recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
     recalculateNoise(p_CmdBuffer, p_Object);
@@ -414,10 +411,7 @@ void NoiseEngine::recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, Noise
 void NoiseEngine::recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
     if (!p_Object.includeNormal)
-    {
-        LOG_WARN("Tried to update normal map of noise object with image ", p_Object.noiseImage.image, ", but this noise object does not include normal");
         return;
-    }
 
     if (!p_Object.normalNeedsRebuild)
         return;

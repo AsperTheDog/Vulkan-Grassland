@@ -54,11 +54,6 @@ void PlaneEngine::render(const VulkanCommandBuffer& p_CmdBuffer) const
     p_CmdBuffer.cmdDraw(m_PushConstants.gridSize * m_PushConstants.gridSize * 4, 0);
 }
 
-void PlaneEngine::cleanup()
-{
-
-}
-
 void PlaneEngine::drawImgui()
 {
     ImGui::Begin("Controls");

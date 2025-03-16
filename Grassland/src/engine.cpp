@@ -120,11 +120,11 @@ Engine::Engine()
 
     //Descriptor pool
     std::array<VkDescriptorPoolSize, 3> l_PoolSizes = {
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}
     };
-    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 5, 0);
+    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 7, 0);
 
     // Renderpass and pipelines
     createRenderPasses();
@@ -156,7 +156,7 @@ Engine::Engine()
     m_Heightmap.initialize(512, *this, true);
 
     m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 80, 70, 60});
+    m_GrassEngine.initalize({7, 11, 17, 30}, {120, 100, 80, 60});
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -174,7 +174,10 @@ Engine::~Engine()
 
     Logger::setRootContext("Resource cleanup");
 
-    m_PlaneEngine.cleanup();
+    m_PlaneEngine.cleanupImgui();
+    m_Heightmap.cleanupImgui();
+    m_GrassEngine.cleanupImgui();
+    m_NoiseEngine.cleanupImgui();
 
     ImGui_ImplVulkan_Shutdown();
     m_Window.shutdownImgui();

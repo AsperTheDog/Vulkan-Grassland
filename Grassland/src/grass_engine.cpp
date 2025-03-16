@@ -1,9 +1,6 @@
 #include "grass_engine.hpp"
+#include "grass_engine.hpp"
 
-#include "camera.hpp"
-#include "camera.hpp"
-#include "camera.hpp"
-#include "camera.hpp"
 #include "camera.hpp"
 #include "engine.hpp"
 #include "vertex.hpp"
@@ -22,7 +19,9 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
         .persistence = 1.5f,
         .lacunarity = 3.f,
     });
+
     m_HeightNoise.initialize(512, m_Engine, false);
+    m_WindNoise.initialize(512, m_Engine, false);
 
     VulkanDevice& l_Device = m_Engine.getDevice();
 
@@ -99,9 +98,43 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
 
     {
         {
-            std::array<VkPushConstantRange, 1> l_PushConstantRanges;
-            l_PushConstantRanges[0] = { VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4) };
-            m_GrassPipelineLayoutID = l_Device.createPipelineLayout({}, l_PushConstantRanges);
+            std::array<VkDescriptorSetLayoutBinding, 1> l_Bindings;
+            l_Bindings[0].binding = 0;
+            l_Bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            l_Bindings[0].descriptorCount = 1;
+            l_Bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            l_Bindings[0].pImmutableSamplers = nullptr;
+
+            m_GrassDescriptorSetLayoutID = l_Device.createDescriptorSetLayout(l_Bindings, 0);
+        }
+
+        m_GrassDescriptorSetID = l_Device.createDescriptorSet(m_Engine.getDescriptorPoolID(), m_GrassDescriptorSetLayoutID);
+
+        const VkDescriptorImageInfo l_GrassWindInfo{
+            .sampler = *l_Device.getImage(m_WindNoise.noiseImage.image).getSampler(m_WindNoise.noiseImage.sampler),
+            .imageView = *l_Device.getImage(m_WindNoise.noiseImage.image).getImageView(m_WindNoise.noiseImage.view),
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+
+        std::array<VkWriteDescriptorSet, 1> l_DescriptorWrite{};
+        l_DescriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        l_DescriptorWrite[0].dstSet = *l_Device.getDescriptorSet(m_GrassDescriptorSetID);
+        l_DescriptorWrite[0].dstBinding = 0;
+        l_DescriptorWrite[0].dstArrayElement = 0;
+        l_DescriptorWrite[0].descriptorCount = 1;
+        l_DescriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        l_DescriptorWrite[0].pImageInfo = &l_GrassWindInfo;
+
+        l_Device.updateDescriptorSets(l_DescriptorWrite);
+    }
+
+    {
+        {
+            std::array<VkPushConstantRange, 2> l_PushConstantRanges;
+            l_PushConstantRanges[0] = { VK_SHADER_STAGE_VERTEX_BIT, GrassPushConstantData::getVertexShaderOffset(), GrassPushConstantData::getVertexShaderSize() };
+            l_PushConstantRanges[1] = { VK_SHADER_STAGE_FRAGMENT_BIT, GrassPushConstantData::getFragmentShaderOffset(), GrassPushConstantData::getFragmentShaderSize() };
+            std::array<ResourceID, 1> l_DescriptorSetLayouts = { m_GrassDescriptorSetLayoutID };
+            m_GrassPipelineLayoutID = l_Device.createPipelineLayout(l_DescriptorSetLayouts, l_PushConstantRanges);
         }
 
         const ResourceID l_VertexShaderID = l_Device.createShader("shaders/grass.vert", VK_SHADER_STAGE_VERTEX_BIT, false, {});
@@ -122,12 +155,12 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
         VulkanBinding l_InstanceBinding{ 0, VK_VERTEX_INPUT_RATE_INSTANCE, sizeof(InstanceElem)};
         l_InstanceBinding.addAttribDescription(VK_FORMAT_R32G32B32_SFLOAT, offsetof(InstanceElem, position));
         l_InstanceBinding.addAttribDescription(VK_FORMAT_R32_SFLOAT, offsetof(InstanceElem, rotation));
+        l_InstanceBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(InstanceElem, uv));
         l_InstanceBinding.addAttribDescription(VK_FORMAT_R32_SFLOAT, offsetof(InstanceElem, height));
 
         VulkanBinding l_VertexBinding{ 1, VK_VERTEX_INPUT_RATE_VERTEX, sizeof(Vertex) };
         l_VertexBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, position));
         l_VertexBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, normal));
-        l_VertexBinding.addAttribDescription(VK_FORMAT_R8G8B8_UNORM, offsetof(Vertex, color));
 
         VulkanPipelineBuilder l_PipelineBuilder{l_Device.getID()};
         l_PipelineBuilder.addVertexBinding(l_InstanceBinding);
@@ -161,18 +194,15 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
             const float l_WeightSq = l_Weight * l_Weight;
 
             l_BladeVertices[i].position = glm::vec2(l_Lerp(0.1f, 0.0f, l_WeightSq), -l_Weight);
-            l_BladeVertices[i].normal = glm::vec2(0.8f, 1.0f);
-            l_BladeVertices[i].color = glm::u8vec3(0.0f, l_Lerp(0.1f, 0.6f, l_WeightSq) * UINT8_MAX, 0.0f);
+            l_BladeVertices[i].normal = glm::vec2(0.3f, 0.0f);
 
             l_BladeVertices[i + 1].position = l_BladeVertices[i].position;
             l_BladeVertices[i + 1].position.x *= -1.0f;
             l_BladeVertices[i + 1].normal = l_BladeVertices[i].normal;
-            l_BladeVertices[i + 1].normal.x = -1.0f;
-            l_BladeVertices[i + 1].color = l_BladeVertices[i].color;
+            l_BladeVertices[i + 1].normal.x *= -1.0f;
         }
         l_BladeVertices.back().position = glm::vec2(0.0f, -1.0f);
         l_BladeVertices.back().normal = glm::vec2(0.0f, 0.0f);
-        l_BladeVertices.back().color = glm::u8vec3(0.0f, 0.6f * UINT8_MAX, 0.0f);
 
         m_VertexBufferData.m_IndexStart = sizeof(l_BladeVertices);
 
@@ -238,10 +268,19 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
 void GrassEngine::initializeImgui()
 {
     m_HeightNoise.initializeImgui();
+    m_WindNoise.initializeImgui();
+}
+
+void GrassEngine::cleanupImgui()
+{
+    m_HeightNoise.cleanupImgui();
+    m_WindNoise.cleanupImgui();
 }
 
 void GrassEngine::update(const glm::vec2 p_CameraTile)
 {
+    m_PushConstants.vpMatrix = m_Engine.getCamera().getVPMatrix();
+
     if (m_CurrentTile != p_CameraTile)
     {
         m_CurrentTile = p_CameraTile;
@@ -250,6 +289,10 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
 
     if (m_HeightNoise.isNoiseDirty())
         m_NeedsUpdate = true;
+
+    m_PushConstants.windDir = glm::vec2(glm::sin(m_ImguiWindDirection), glm::cos(m_ImguiWindDirection));
+
+    m_WindNoise.shiftOffset(m_PushConstants.windDir * m_ImguiWindSpeed * ImGui::GetIO().DeltaTime);
 }
 
 void GrassEngine::updateTileGridSize(const std::array<uint32_t, 4> p_TileGridSizes)
@@ -275,6 +318,8 @@ void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::v
 
 void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const float p_GridExtent, const float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex)
 {
+    m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_WindNoise);
+
     if (!m_NeedsUpdate)
         return;
 
@@ -331,7 +376,6 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
 
 void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
 {
-    const glm::mat4& l_VPMatrix = m_Engine.getCamera().getVPMatrix();
     const std::array<uint32_t, 4> l_InstanceCounts = getInstanceCounts();
 
     const std::array<ResourceID, 2 > l_Buffers = { m_InstanceDataBufferID, m_VertexBufferData.m_LODBuffer };
@@ -340,7 +384,9 @@ void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer) const
     p_CmdBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, m_GrassPipelineID);
     p_CmdBuffer.cmdBindVertexBuffers(l_Buffers, l_Offsets);
     p_CmdBuffer.cmdBindIndexBuffer(m_VertexBufferData.m_LODBuffer, m_VertexBufferData.m_IndexStart, VK_INDEX_TYPE_UINT16);
-    p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &l_VPMatrix);
+    p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, m_GrassPipelineLayoutID, m_GrassDescriptorSetID);
+    p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, GrassPushConstantData::getVertexShaderOffset(), GrassPushConstantData::getVertexShaderSize(), m_PushConstants.getVertexShaderData());
+    p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_FRAGMENT_BIT, GrassPushConstantData::getFragmentShaderOffset(), GrassPushConstantData::getFragmentShaderSize(), m_PushConstants.getFragmentShaderData());
 
     uint32_t l_Offset = 0;
     for (uint32_t i = 0; i < 4; ++i)
@@ -381,9 +427,26 @@ void GrassEngine::drawImgui()
     if (ImGui::Button("Edit Grass Height"))
         m_HeightNoise.toggleImgui();
 
+    ImGui::Separator();
+    ImGui::DragFloat("Width", &m_PushConstants.widthMult, 0.01f, 0.01f, 2.0f);
+    ImGui::ColorEdit3("Base Color", &m_PushConstants.baseColor.x);
+    ImGui::ColorEdit3("Tip Color", &m_PushConstants.tipColor.x);
+    ImGui::DragFloat("Color Ramp", &m_PushConstants.colorRamp, 0.01f, 0.01f, 10.0f);
+    
+    ImGui::Separator();
+    ImGui::DragFloat("Tilt", &m_PushConstants.tilt, 0.01f, 0.0f, 2.0f);
+    ImGui::DragFloat("Tilt Bend", &m_PushConstants.bend, 0.01f, 0.0f, 5.0f);
+    ImGui::Separator();
+    ImGui::DragFloat("Wind Direction", &m_ImguiWindDirection, 0.1f, 0.0f, 2.0f * glm::pi<float>());
+    ImGui::DragFloat("Wind Speed", &m_ImguiWindSpeed, 0.01f, 0.0f, 3.0f);
+    ImGui::DragFloat("Wind Strength", &m_PushConstants.windStrength, 0.01f, 0.0f, 3.0f);
+    if (ImGui::Button("Edit Wind Noise"))
+        m_WindNoise.toggleImgui();
+
     ImGui::End();
 
     m_HeightNoise.drawImgui("Grass Height");
+    m_WindNoise.drawImgui("Wind");
 }
 
 uint32_t GrassEngine::getInstanceCount() const

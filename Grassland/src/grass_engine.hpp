@@ -31,6 +31,7 @@ public:
     {
         alignas(16) glm::vec3 position;
         alignas(4) float rotation;
+        alignas(8) glm::vec2 uv;
         alignas(4) float height;
     };
 
@@ -47,10 +48,34 @@ public:
         alignas(4) float grassHeightVariation;
     };
 
+    struct GrassPushConstantData
+    {
+        alignas(16) glm::mat4 vpMatrix;
+        alignas(4) float widthMult = 0.5f;
+        alignas(4) float tilt = 0.2f;
+        alignas(4) float bend = 1.f;
+        alignas(8) glm::vec2 windDir = {0.f, 1.f};
+        alignas(4) float windStrength = 0.1f;
+        alignas(16) glm::vec3 baseColor = { 0.0112f, 0.082f, 0.0f };
+        alignas(16) glm::vec3 tipColor = { 0.25f, 0.6f, 0.0f };
+        alignas(4) float colorRamp = 4.f;
+
+        static uint32_t getVertexShaderOffset() { return offsetof(GrassPushConstantData, vpMatrix); }
+        static uint32_t getFragmentShaderOffset() { return offsetof(GrassPushConstantData, baseColor); }
+
+        static uint32_t getVertexShaderSize() { return getFragmentShaderOffset(); }
+        static uint32_t getFragmentShaderSize() { return sizeof(GrassPushConstantData) - getFragmentShaderOffset(); }
+
+        [[nodiscard]] const void* getVertexShaderData() const { return &vpMatrix; }
+        [[nodiscard]] const void* getFragmentShaderData() const { return &baseColor; }
+    };
+
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
     void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
     void initializeImgui();
+
+    void cleanupImgui();
 
     void update(glm::vec2 p_CameraTile);
 
@@ -67,7 +92,7 @@ public:
 
     [[nodiscard]] uint32_t getInstanceCount() const;
     [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
-    [[nodiscard]] bool isDirty() const { return m_NeedsUpdate; }
+    [[nodiscard]] bool isDirty() const { return m_NeedsUpdate || m_WindNoise.isNoiseDirty(); }
 
 private:
     Engine& m_Engine;
@@ -82,14 +107,19 @@ private:
 
     float m_ImguiGrassBaseHeight = 1.5f;
     float m_ImguiGrassHeightVariation = 1.f;
+    float m_ImguiWindDirection = 0.f;
+    float m_ImguiWindSpeed = 0.1f;
 
     bool m_NeedsUpdate = true;
     bool m_NeedsRebuild = true;
+
+    GrassPushConstantData m_PushConstants{};
 
 private:
     void rebuildResources();
 
     NoiseEngine::NoiseObject m_HeightNoise{};
+    NoiseEngine::NoiseObject m_WindNoise{};
 
     ResourceID m_InstanceDataBufferID = UINT32_MAX;
 
@@ -100,6 +130,8 @@ private:
 
     ResourceID m_GrassPipelineLayoutID = UINT32_MAX;
     ResourceID m_GrassPipelineID = UINT32_MAX;
+    ResourceID m_GrassDescriptorSetLayoutID = UINT32_MAX;
+    ResourceID m_GrassDescriptorSetID = UINT32_MAX;
 
     VertexBufferData m_VertexBufferData{};
 };
