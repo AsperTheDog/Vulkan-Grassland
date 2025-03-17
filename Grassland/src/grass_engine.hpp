@@ -94,6 +94,8 @@ public:
     [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
     [[nodiscard]] bool isDirty() const { return m_NeedsUpdate || m_WindNoise.isNoiseDirty(); }
 
+    bool m_RenderEnabled = true;
+
 private:
     Engine& m_Engine;
 

@@ -389,6 +389,8 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
 
 void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer)
 {
+    if (!m_RenderEnabled) return;
+
     const std::array<uint32_t, 4> l_InstanceCounts = getInstanceCounts();
 
     const std::array<ResourceID, 2 > l_Buffers = { m_InstanceDataBufferID, m_VertexBufferData.m_LODBuffer };
@@ -420,6 +422,10 @@ void GrassEngine::drawImgui()
 {
     ImGui::Begin("Grass");
 
+    ImGui::Checkbox("Enabled", &m_RenderEnabled);
+
+    ImGui::Separator();
+
     if (ImGui::Button("Recompute"))
     {
         updateTileGridSize(m_ImguiGridSizes);
@@ -446,6 +452,7 @@ void GrassEngine::drawImgui()
         m_HeightNoise.toggleImgui();
 
     ImGui::Separator();
+
     ImGui::DragFloat("Width", &m_PushConstants.widthMult, 0.01f, 0.01f, 2.0f);
     ImGui::DragFloat("Width LOD Slope", &m_ImguiWidthLODSlope, 0.01f, 0.01f, 1.0f);
     ImGui::ColorEdit3("Base Color", &m_PushConstants.baseColor.x);
@@ -453,9 +460,12 @@ void GrassEngine::drawImgui()
     ImGui::DragFloat("Color Ramp", &m_PushConstants.colorRamp, 0.01f, 0.01f, 10.0f);
     
     ImGui::Separator();
+
     ImGui::DragFloat("Tilt", &m_PushConstants.tilt, 0.01f, 0.0f, 2.0f);
     ImGui::DragFloat("Tilt Bend", &m_PushConstants.bend, 0.01f, 0.0f, 5.0f);
+
     ImGui::Separator();
+
     ImGui::DragFloat("Wind Direction", &m_ImguiWindDirection, 0.1f, 0.0f, 2.0f * glm::pi<float>());
     ImGui::DragFloat("Wind Speed", &m_ImguiWindSpeed, 0.01f, 0.0f, 3.0f);
     ImGui::DragFloat("Wind Strength", &m_PushConstants.windStrength, 0.01f, 0.0f, 3.0f);
