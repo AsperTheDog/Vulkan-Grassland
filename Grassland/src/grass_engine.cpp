@@ -6,7 +6,7 @@
 #include "vertex.hpp"
 #include "vulkan_device.hpp"
 
-void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const std::array<uint32_t, 4> p_Densities)
+void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const std::array<uint32_t, 4> p_Densities, const ResourceID p_TransferCmdBuffer)
 {
     m_TileGridSizes = p_TileGridSizes;
     m_ImguiGridSizes = p_TileGridSizes;
@@ -15,7 +15,7 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
     
     m_HeightNoise.overridePushConstant({
         .scale = 20.f,
-        .octaves = 6,
+        .octaves = 4,
         .persistence = 1.2f,
         .lacunarity = 2.f,
     });
@@ -264,10 +264,18 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
         l_LODBuffer.allocateFromFlags({VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT});
 
         {
+            VulkanCommandBuffer& l_CmdBuffer = l_Device.getCommandBuffer(p_TransferCmdBuffer, 0);
+
+            if (!l_CmdBuffer.isRecording())
+            {
+                l_CmdBuffer.reset();
+                l_CmdBuffer.beginRecording();
+            }
+
             void* l_DataPtr = l_Device.mapStagingBuffer(sizeof(l_BladeVertices) + sizeof(l_BladeIndices), 0);
             memcpy(l_DataPtr, l_BladeVertices.data(), sizeof(l_BladeVertices));
             memcpy(static_cast<uint8_t*>(l_DataPtr) + sizeof(l_BladeVertices), l_BladeIndices.data(), sizeof(l_BladeIndices));
-            l_Device.dumpStagingBuffer(m_VertexBufferData.m_LODBuffer, sizeof(l_BladeVertices) + sizeof(l_BladeIndices), 0, 0);
+            l_CmdBuffer.ecmdDumpStagingBuffer(m_VertexBufferData.m_LODBuffer, sizeof(l_BladeVertices) + sizeof(l_BladeIndices), 0);
         }
     }
 }
@@ -329,19 +337,21 @@ void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::v
     m_NeedsUpdate = true;
 }
 
-void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const float p_GridExtent, const float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex)
+bool GrassEngine::recompute(VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const float p_GridExtent, const float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex)
 {
-    m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_WindNoise);
-
     if (!m_NeedsUpdate)
-        return;
+        return false;
 
     if (m_NeedsRebuild)
     {
         rebuildResources();
     }
 
-    m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_HeightNoise);
+    if (!p_CmdBuffer.isRecording())
+    {
+        p_CmdBuffer.reset();
+        p_CmdBuffer.beginRecording();
+    }
 
     p_CmdBuffer.cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineID);
     p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, m_ComputePipelineLayoutID, m_ComputeDescriptorSetID);
@@ -385,6 +395,21 @@ void GrassEngine::recompute(const VulkanCommandBuffer& p_CmdBuffer, const float 
     l_HeightmapImage.setQueue(p_GraphicsQueueFamilyIndex);
 
     m_NeedsUpdate = false;
+
+    return true;
+}
+
+bool GrassEngine::recomputeWind(VulkanCommandBuffer& p_CmdBuffer)
+{
+    return m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_WindNoise);
+}
+
+bool GrassEngine::recomputeHeight(VulkanCommandBuffer& p_CmdBuffer)
+{
+    const bool l_RecomputedHeight = m_Engine.getNoiseEngine().recalculate(p_CmdBuffer, m_HeightNoise);
+    if (l_RecomputedHeight)
+        m_NeedsUpdate = true;
+    return l_RecomputedHeight;
 }
 
 void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer)
@@ -479,6 +504,22 @@ void GrassEngine::drawImgui()
 
     m_HeightNoise.drawImgui("Grass Height");
     m_WindNoise.drawImgui("Wind");
+}
+
+bool GrassEngine::transferCulling(VulkanCommandBuffer& p_CmdBuffer)
+{
+    if (!m_NeedsTransfer)
+        return false;
+
+    if (!p_CmdBuffer.isRecording())
+    {
+        p_CmdBuffer.reset();
+        p_CmdBuffer.beginRecording();
+    }
+
+    m_NeedsTransfer = false;
+
+    return true;
 }
 
 uint32_t GrassEngine::getInstanceCount() const

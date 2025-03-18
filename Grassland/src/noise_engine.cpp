@@ -388,16 +388,24 @@ void NoiseEngine::initialize()
     }
 }
 
-void NoiseEngine::recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
+bool NoiseEngine::recalculate(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
-    recalculateNoise(p_CmdBuffer, p_Object);
-    recalculateNormal(p_CmdBuffer, p_Object);
+    const bool l_CalculatedNoise = recalculateNoise(p_CmdBuffer, p_Object);
+    const bool l_CalculatedNormal = recalculateNormal(p_CmdBuffer, p_Object);
+
+    return l_CalculatedNoise || l_CalculatedNormal;
 }
 
-void NoiseEngine::recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
+bool NoiseEngine::recalculateNoise(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
     if (!p_Object.noiseNeedsRebuild)
-        return;
+        return false;
+
+    if (!p_CmdBuffer.isRecording())
+    {
+        p_CmdBuffer.reset();
+        p_CmdBuffer.beginRecording();
+    }
 
     VulkanDevice& l_Device = m_Engine.getDevice();
     
@@ -425,15 +433,20 @@ void NoiseEngine::recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, Noise
     l_HeightmapImage.setLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     p_Object.noiseNeedsRebuild = false;
+
+    return true;
 }
 
-void NoiseEngine::recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
+bool NoiseEngine::recalculateNormal(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const
 {
-    if (!p_Object.includeNormal)
-        return;
+    if (!p_Object.includeNormal || !p_Object.normalNeedsRebuild)
+        return false;
 
-    if (!p_Object.normalNeedsRebuild)
-        return;
+    if (!p_CmdBuffer.isRecording())
+    {
+        p_CmdBuffer.reset();
+        p_CmdBuffer.beginRecording();
+    }
 
     VulkanDevice& l_Device = m_Engine.getDevice();
 
@@ -463,4 +476,6 @@ void NoiseEngine::recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, Nois
     l_NormalmapImage.setQueue(l_GraphicsFamilyIndex);
 
     p_Object.normalNeedsRebuild = false;
+
+    return true;
 }

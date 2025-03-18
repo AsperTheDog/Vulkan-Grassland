@@ -72,7 +72,7 @@ public:
 
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
+    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities, ResourceID p_TransferQueueFamily);
     void initializeImgui();
 
     void cleanupImgui();
@@ -85,10 +85,14 @@ public:
     void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_Offset);
     void setDirty() { m_NeedsUpdate = true; }
 
-    void recompute(const VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
+    bool recompute(VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
+    bool recomputeWind(VulkanCommandBuffer& p_CmdBuffer);
+    bool recomputeHeight(VulkanCommandBuffer& p_CmdBuffer);
     void render(const VulkanCommandBuffer& p_CmdBuffer);
 
     void drawImgui();
+
+    bool transferCulling(VulkanCommandBuffer& p_CmdBuffer);
 
     [[nodiscard]] uint32_t getInstanceCount() const;
     [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
@@ -101,11 +105,11 @@ private:
 
     glm::vec2 m_CurrentTile{ 0, 0 };
 
-    std::array<uint32_t, 4> m_TileGridSizes;
-    std::array<uint32_t, 4> m_GrassDensities;
+    std::array<uint32_t, 4> m_TileGridSizes{};
+    std::array<uint32_t, 4> m_GrassDensities{};
 
-    std::array<uint32_t, 4> m_ImguiGridSizes;
-    std::array<uint32_t, 4> m_ImguiGrassDensities;
+    std::array<uint32_t, 4> m_ImguiGridSizes{};
+    std::array<uint32_t, 4> m_ImguiGrassDensities{};
 
     float m_ImguiGrassBaseHeight = 3.f;
     float m_ImguiGrassHeightVariation = 2.f;
@@ -122,6 +126,7 @@ private:
 
     bool m_NeedsUpdate = true;
     bool m_NeedsRebuild = true;
+    bool m_NeedsTransfer = true;
 
     GrassPushConstantData m_PushConstants{};
 
@@ -132,6 +137,7 @@ private:
     NoiseEngine::NoiseObject m_WindNoise{};
 
     ResourceID m_InstanceDataBufferID = UINT32_MAX;
+    ResourceID m_TileDataBufferID = UINT32_MAX;
 
     ResourceID m_ComputePipelineLayoutID = UINT32_MAX;
     ResourceID m_ComputePipelineID = UINT32_MAX;

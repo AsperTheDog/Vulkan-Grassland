@@ -29,6 +29,8 @@ public:
 
     [[nodiscard]] QueueSelection getGraphicsQueuePos() const { return m_GraphicsQueuePos; }
     [[nodiscard]] QueueSelection getComputeQueuePos() const { return m_ComputeQueuePos; }
+    [[nodiscard]] QueueSelection getPresentQueuePos() const { return m_PresentQueuePos; }
+    [[nodiscard]] QueueSelection getTransferQueuePos() const { return m_TransferQueuePos; }
     Camera& getCamera() { return m_Camera; }
     NoiseEngine::NoiseObject& getHeightmap() { return m_Heightmap; }
 
@@ -37,9 +39,12 @@ private:
 
     void createRenderPasses();
 
-    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, bool p_UsedCompute);
-    bool renderNoise();
-    bool updateGrass();
+    void render(uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, ResourceID p_SwapchainSemaphore, bool p_RenderedHeightmap, bool p_ComputedGrass, bool p_RenderedWind);
+    bool computeHeightmap();
+    bool computeGrassHeight();
+    bool computeWind();
+    bool updateGrass(bool p_GrassHeightComputed, bool p_DataTransferred, bool p_HeightmapComputed);
+    bool transferCulling();
 
     void recreateSwapchain(VkExtent2D p_NewSize);
 
@@ -56,23 +61,30 @@ private:
 
     ResourceID m_SwapchainID = UINT32_MAX;
 
-    ResourceID m_GraphicsCmdBufferID = UINT32_MAX;
+    ResourceID m_GrassHeightCmdBufferID = UINT32_MAX;
+    ResourceID m_HeightmapCmdBufferID = UINT32_MAX;
+    ResourceID m_WindCmdBufferID = UINT32_MAX;
+    ResourceID m_TransferCmdBufferID = UINT32_MAX;
     ResourceID m_ComputeCmdBufferID = UINT32_MAX;
-
-    ResourceID m_ComputeFinishedSemaphoreID = UINT32_MAX;
+    ResourceID m_RenderCmdBufferID = UINT32_MAX;
 
     ResourceID m_DepthBuffer = UINT32_MAX;
     ResourceID m_DepthBufferView = UINT32_MAX;
 	std::vector<ResourceID> m_FramebufferIDs{};
 
     ResourceID m_RenderPassID = UINT32_MAX;
-
+    
+    ResourceID m_GrassHeightFinishedSemaphoreID = UINT32_MAX;
+    ResourceID m_HeightmapFinishedSemaphoreID = UINT32_MAX;
+    ResourceID m_WindFinishedSemaphoreID = UINT32_MAX;
+    ResourceID m_TransferFinishedSemaphoreID = UINT32_MAX;
+    ResourceID m_ComputeFinishedSemaphoreID = UINT32_MAX;
     ResourceID m_RenderFinishedSemaphoreID = UINT32_MAX;
-    ResourceID m_InFlightFenceID = UINT32_MAX;
+
+    ResourceID m_ComputeFenceID = UINT32_MAX;
+    ResourceID m_RenderFenceID = UINT32_MAX;
 
     ResourceID m_DescriptorPoolID = UINT32_MAX;
-
-    bool m_UsingSharedCmdBuffer = false;
 
     uint32_t m_CurrentFrame = 0;
 
@@ -86,6 +98,8 @@ private: // Plane
     NoiseEngine::NoiseObject m_Heightmap{};
 
     glm::vec2 m_CurrentTile{ 0, 0 };
+
+    bool m_MustWaitForGrass = false;
 
 private:
     void initImgui() const;

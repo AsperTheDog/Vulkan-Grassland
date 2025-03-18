@@ -40,7 +40,17 @@ public:
     void setMouseCaptured(bool captured);
     void mouseScrolled(int32_t y);
 
+    [[nodiscard]] bool isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax);
+
 private:
+    struct Frustum
+    {
+        glm::vec4 planes[6];
+        bool frustumDirty = true;
+    };
+
+    Frustum& getFrustum();
+
 	void calculateRightVector();
 
     float m_movingSpeed = 10.f;
@@ -62,6 +72,7 @@ private:
 	bool m_projDirty;
 	glm::mat4 m_projMatrix{};
 	glm::mat4 m_VPMatrix{};
+    Frustum m_Frustum;
 
 	//Event tracker
 	bool m_wPressed = false;

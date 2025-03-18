@@ -80,6 +80,7 @@ Engine::Engine()
     // Select Queue Families and assign queues
     QueueFamilySelector l_Selector{ l_QueueStructure };
     l_Selector.selectQueueFamily(l_GraphicsQueueFamily, QueueFamilyTypeBits::GRAPHICS);
+    l_Selector.selectQueueFamily(l_ComputeQueueFamily, QueueFamilyTypeBits::COMPUTE);
     l_Selector.selectQueueFamily(l_PresentQueueFamily, QueueFamilyTypeBits::PRESENT);
     m_GraphicsQueuePos = l_Selector.getOrAddQueue(l_GraphicsQueueFamily, 1.0);
     m_ComputeQueuePos = l_Selector.getOrAddQueue(l_ComputeQueueFamily, 1.0);
@@ -101,14 +102,14 @@ Engine::Engine()
     // Command Buffers
     l_Device.configureOneTimeQueue(m_TransferQueuePos);
     l_Device.initializeCommandPool(l_GraphicsQueueFamily, 0, true);
-    m_GraphicsCmdBufferID = l_Device.createCommandBuffer(l_GraphicsQueueFamily, 0, false);
-    if (m_GraphicsQueuePos != m_ComputeQueuePos)
-        m_ComputeCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
-    else
-    {
-        m_ComputeCmdBufferID = m_GraphicsCmdBufferID;
-        m_UsingSharedCmdBuffer = true;
-    }
+    m_RenderCmdBufferID = l_Device.createCommandBuffer(l_GraphicsQueueFamily, 0, false);
+    l_Device.initializeCommandPool(l_ComputeQueueFamily, 0, true);
+    m_HeightmapCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
+    m_GrassHeightCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
+    m_WindCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
+    m_ComputeCmdBufferID = l_Device.createCommandBuffer(l_ComputeQueueFamily, 0, false);
+    l_Device.initializeCommandPool(l_TransferQueueFamily, 0, true);
+    m_TransferCmdBufferID = l_Device.createCommandBuffer(l_TransferQueueFamily, 0, false);
 
     // Depth Buffer
     m_DepthBuffer = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_D32_SFLOAT, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0);
@@ -139,10 +140,15 @@ Engine::Engine()
     }
 
     // Sync objects
+    m_HeightmapFinishedSemaphoreID = l_Device.createSemaphore();
+    m_GrassHeightFinishedSemaphoreID = l_Device.createSemaphore();
+    m_WindFinishedSemaphoreID = l_Device.createSemaphore();
+    m_TransferFinishedSemaphoreID = l_Device.createSemaphore();
+    m_ComputeFinishedSemaphoreID = l_Device.createSemaphore();
     m_RenderFinishedSemaphoreID = l_Device.createSemaphore();
-    m_InFlightFenceID = l_Device.createFence(true);
-    if (!m_UsingSharedCmdBuffer)
-        m_ComputeFinishedSemaphoreID = l_Device.createSemaphore();
+
+    m_RenderFenceID = l_Device.createFence(true);
+    m_ComputeFenceID = l_Device.createFence(false);
 
     m_Window.getMouseMovedSignal().connect(&m_Camera, &Camera::mouseMoved);
     m_Window.getKeyPressedSignal().connect(&m_Camera, &Camera::keyPressed);
@@ -156,7 +162,7 @@ Engine::Engine()
     m_Heightmap.initialize(2048, *this, true);
 
     m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 60, 50, 40});
+    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 60, 50, 40}, m_TransferCmdBufferID);
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -193,10 +199,8 @@ void Engine::run()
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(l_Device);
 
-    VulkanFence& l_InFlightFence = l_Device.getFence(m_InFlightFenceID);
-
-    const VulkanQueue l_GraphicsQueue = l_Device.getQueue(m_GraphicsQueuePos);
-    VulkanCommandBuffer& l_GraphicsBuffer = l_Device.getCommandBuffer(m_GraphicsCmdBufferID, 0);
+    VulkanFence& l_RenderFence = l_Device.getFence(m_RenderFenceID);
+    VulkanFence& l_ComputeFence = l_Device.getFence(m_ComputeFenceID);
 
     m_CurrentFrame = 0;
     while (!m_Window.shouldClose())
@@ -206,9 +210,28 @@ void Engine::run()
             continue;
 
         update();
+        
+        if (m_MustWaitForGrass)
+        {
+            l_ComputeFence.wait();
+            l_ComputeFence.reset();
+            m_MustWaitForGrass = false;
+        }
 
-        l_InFlightFence.wait();
-        l_InFlightFence.reset();
+        const bool l_RenderedGrassHeight = computeGrassHeight();
+        const bool l_TransferredCullData = transferCulling();
+
+        l_RenderFence.wait();
+        l_RenderFence.reset();
+
+        const bool l_RenderedHeightmap = computeHeightmap();
+        const bool l_RenderedWind = computeWind();
+
+        // Record
+        bool l_ComputedGrass;
+        {
+            l_ComputedGrass = updateGrass(l_RenderedGrassHeight, l_TransferredCullData, l_RenderedHeightmap);
+        }
 
         VulkanSwapchain& l_Swapchain = l_SwapchainExt->getSwapchain(m_SwapchainID);
         const uint32_t l_ImageIndex = l_Swapchain.acquireNextImage();
@@ -220,43 +243,8 @@ void Engine::run()
         if (l_ImguiDrawData->DisplaySize.x <= 0.0f || l_ImguiDrawData->DisplaySize.y <= 0.0f)
             continue;
 
-        // Record
-        bool l_RenderedNoise;
-        {
-            l_RenderedNoise = renderNoise();
-            l_RenderedNoise = updateGrass() || l_RenderedNoise;
-            render(l_ImageIndex, l_ImguiDrawData, l_RenderedNoise);
-        }
-
-        // Submit
-        {
-            const std::array<ResourceID, 1> l_SignalSemaphores = { m_RenderFinishedSemaphoreID };
-            if (m_UsingSharedCmdBuffer)
-            {
-                const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = {
-                    VulkanCommandBuffer::WaitSemaphoreData{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}
-                };
-                l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
-            }
-            else
-            {
-                if (l_RenderedNoise)
-                {
-                    const std::array<VulkanCommandBuffer::WaitSemaphoreData, 2> l_WaitSemaphores = {
-                        VulkanCommandBuffer::WaitSemaphoreData{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT},
-                        VulkanCommandBuffer::WaitSemaphoreData{m_ComputeFinishedSemaphoreID, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT}
-                    };
-                    l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
-                }
-                else
-                {
-                    const std::array<VulkanCommandBuffer::WaitSemaphoreData, 1> l_WaitSemaphores = {
-                        VulkanCommandBuffer::WaitSemaphoreData{l_Swapchain.getImgSemaphore(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}
-                    };
-                    l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_InFlightFenceID);
-                }
-            }
-        }
+        // Render
+        render(l_ImageIndex, l_ImguiDrawData, l_Swapchain.getImgSemaphore(), l_RenderedHeightmap, l_ComputedGrass, l_RenderedWind);
 
         // Present
         {
@@ -336,9 +324,11 @@ void Engine::createRenderPasses()
     Logger::popContext();
 }
 
-void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const bool p_UsedCompute)
+void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, const ResourceID p_SwapchainSemaphore, const bool p_RenderedHeightmap, const bool p_ComputedGrass, const bool p_RenderedWind)
 {
-    VulkanCommandBuffer& p_Buffer = VulkanContext::getDevice(m_DeviceID).getCommandBuffer(m_GraphicsCmdBufferID, 0);
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+
+    VulkanCommandBuffer& p_CmdBuffer = VulkanContext::getDevice(m_DeviceID).getCommandBuffer(m_RenderCmdBufferID, 0);
     
     const VkExtent2D& extent = getSwapchain().getExtent();
 
@@ -346,62 +336,134 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
     clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
     clearValues[1].depthStencil = { 1.0f, 0 };
 
-    if (!m_UsingSharedCmdBuffer || !p_UsedCompute)
-        p_Buffer.beginRecording();
-    p_Buffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
+    p_CmdBuffer.beginRecording();
+    p_CmdBuffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
 
-    m_PlaneEngine.render(p_Buffer);
-    m_GrassEngine.render(p_Buffer);
+    m_PlaneEngine.render(p_CmdBuffer);
+    m_GrassEngine.render(p_CmdBuffer);
 
-    ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_Buffer);
+    ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_CmdBuffer);
 
-    p_Buffer.cmdEndRenderPass();
-    p_Buffer.endRecording();
+    p_CmdBuffer.cmdEndRenderPass();
+    p_CmdBuffer.endRecording();
+
+    std::vector<VulkanCommandBuffer::WaitSemaphoreData> l_WaitSemaphores;
+    l_WaitSemaphores.emplace_back(p_SwapchainSemaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    if (p_ComputedGrass)
+        l_WaitSemaphores.emplace_back(m_ComputeFinishedSemaphoreID, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    else if (p_RenderedHeightmap)
+        l_WaitSemaphores.emplace_back(m_HeightmapFinishedSemaphoreID, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    if (p_RenderedWind)
+        l_WaitSemaphores.emplace_back(m_WindFinishedSemaphoreID, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    const VulkanQueue l_GraphicsQueue = l_Device.getQueue(m_GraphicsQueuePos);
+    VulkanCommandBuffer& l_GraphicsBuffer = l_Device.getCommandBuffer(m_RenderCmdBufferID, 0);
+
+    const std::array<ResourceID, 1> l_SignalSemaphores = { m_RenderFinishedSemaphoreID };
+    l_GraphicsBuffer.submit(l_GraphicsQueue, l_WaitSemaphores, l_SignalSemaphores, m_RenderFenceID);
 }
 
-bool Engine::renderNoise()
+bool Engine::computeHeightmap()
+{
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_HeightmapCmdBufferID, 0);
+
+    const bool l_Recomputed = m_NoiseEngine.recalculate(l_Buffer, m_Heightmap);
+
+    if (l_Recomputed)
+    {
+        l_Buffer.endRecording();
+
+        const VulkanQueue l_ComputeQueue = l_Device.getQueue(m_ComputeQueuePos);
+        const std::array<ResourceID, 1> l_SignalSemaphores = { m_HeightmapFinishedSemaphoreID };
+        l_Buffer.submit(l_ComputeQueue, {}, l_SignalSemaphores);
+    }
+
+    return l_Recomputed;
+}
+
+bool Engine::computeGrassHeight()
+{
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_GrassHeightCmdBufferID, 0);
+
+    const bool l_Recomputed = m_GrassEngine.recomputeHeight(l_Buffer);
+
+    if (l_Recomputed)
+    {
+        l_Buffer.endRecording();
+
+        const VulkanQueue l_ComputeQueue = l_Device.getQueue(m_ComputeQueuePos);
+        const std::array<ResourceID, 1> l_SignalSemaphores = { m_GrassHeightFinishedSemaphoreID };
+        l_Buffer.submit(l_ComputeQueue, {}, l_SignalSemaphores);
+    }
+
+    return l_Recomputed;
+}
+
+bool Engine::computeWind()
+{
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_WindCmdBufferID, 0);
+
+    const bool l_Recomputed = m_GrassEngine.recomputeWind(l_Buffer);
+
+    if (l_Recomputed)
+    {
+        l_Buffer.endRecording();
+
+        const VulkanQueue l_ComputeQueue = l_Device.getQueue(m_ComputeQueuePos);
+        const std::array<ResourceID, 1> l_SignalSemaphores = { m_WindFinishedSemaphoreID };
+        l_Buffer.submit(l_ComputeQueue, {}, l_SignalSemaphores);
+    }
+
+    return l_Recomputed;
+}
+
+bool Engine::updateGrass(const bool p_GrassHeightComputed, const bool p_DataTransferred, const bool p_HeightmapComputed)
 {
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
 
-    const bool l_NeedsCompute = m_Heightmap.isDirty();
+    const bool l_Recomputed = m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale(), m_GraphicsQueuePos.familyIndex);
 
-    if (l_NeedsCompute && !l_Buffer.isRecording())
-    {
-        l_Buffer.reset();
-        l_Buffer.beginRecording();
-    }
-
-    m_NoiseEngine.recalculate(l_Buffer, m_Heightmap);
-
-    return l_NeedsCompute;
-}
-
-bool Engine::updateGrass()
-{
-    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
-    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
-
-    const bool l_NeedsCompute = m_GrassEngine.isDirty();
-
-    if (l_NeedsCompute && !l_Buffer.isRecording())
-    {
-        l_Buffer.reset();
-        l_Buffer.beginRecording();
-    }
-
-    m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale(), m_GraphicsQueuePos.familyIndex);
-
-    if (l_NeedsCompute && !m_UsingSharedCmdBuffer)
+    if (l_Recomputed)
     {
         l_Buffer.endRecording();
 
         const VulkanQueue l_ComputeQueue = l_Device.getQueue(m_ComputeQueuePos);
         const std::array<ResourceID, 1> l_SignalSemaphores = { m_ComputeFinishedSemaphoreID };
-        l_Buffer.submit(l_ComputeQueue, {}, l_SignalSemaphores);
+        std::vector<VulkanCommandBuffer::WaitSemaphoreData> l_WaitSemaphores;
+        if (p_GrassHeightComputed)
+            l_WaitSemaphores.emplace_back(m_GrassHeightFinishedSemaphoreID, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        if (p_DataTransferred)
+            l_WaitSemaphores.emplace_back(m_TransferFinishedSemaphoreID, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        if (p_HeightmapComputed)
+            l_WaitSemaphores.emplace_back(m_HeightmapFinishedSemaphoreID, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        l_Buffer.submit(l_ComputeQueue, l_WaitSemaphores, l_SignalSemaphores, m_ComputeFenceID);
+        m_MustWaitForGrass = true;
     }
 
-    return l_NeedsCompute;
+    return l_Recomputed;
+}
+
+bool Engine::transferCulling()
+{
+    VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
+    VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_TransferCmdBufferID, 0);
+
+    const bool l_Transferred = m_GrassEngine.transferCulling(l_Buffer);
+
+    if (l_Transferred)
+    {
+        l_Buffer.endRecording();
+
+        const VulkanQueue l_TransferQueue = l_Device.getQueue(m_TransferQueuePos);
+        const std::array<ResourceID, 1> l_SignalSemaphores = { m_TransferFinishedSemaphoreID };
+        l_Buffer.submit(l_TransferQueue, {}, l_SignalSemaphores);
+    }
+
+    return l_Transferred;
 }
 
 void Engine::recreateSwapchain(const VkExtent2D p_NewSize)

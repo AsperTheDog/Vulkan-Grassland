@@ -3,6 +3,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "camera.hpp"
 #include "camera.hpp"
+#include "camera.hpp"
+#include "camera.hpp"
 
 #include <algorithm>
 #include <glm/gtx/transform.hpp>
@@ -232,6 +234,27 @@ void Camera::updateEvents(const float delta)
 	}
 }
 
+Camera::Frustum& Camera::getFrustum()
+{
+    if (!m_Frustum.frustumDirty) return m_Frustum; // Only update if necessary
+
+    glm::mat4 l_VP = getVPMatrix();                // Ensure the VP matrix is up to date
+
+    // Extract planes from the VP matrix
+    m_Frustum.planes[0] = l_VP[3] + l_VP[0]; // Left
+    m_Frustum.planes[1] = l_VP[3] - l_VP[0]; // Right
+    m_Frustum.planes[2] = l_VP[3] + l_VP[1]; // Bottom
+    m_Frustum.planes[3] = l_VP[3] - l_VP[1]; // Top
+    m_Frustum.planes[4] = l_VP[3] + l_VP[2]; // Near
+    m_Frustum.planes[5] = l_VP[3] - l_VP[2]; // Far
+
+    // Normalize each plane
+    for (glm::vec4& plane : m_Frustum.planes)
+        plane = glm::normalize(plane);
+
+    m_Frustum.frustumDirty = false; // Frustum is now up to date
+}
+
 void Camera::calculateRightVector()
 {
 	m_right = glm::normalize(glm::cross(m_Front, glm::vec3(0.0f, 1.0f, 0.0f)));
@@ -242,9 +265,27 @@ void Camera::setMouseCaptured(const bool captured)
     m_isMouseCaptured = captured;
 }
 
-void Camera::mouseScrolled(int32_t y)
+void Camera::mouseScrolled(const int32_t y)
 {
     // Change moving speed
     m_movingSpeed += y * 0.2f;
     m_movingSpeed = std::clamp(m_movingSpeed, 0.2f, 100.0f);
+}
+
+bool Camera::isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax)
+{
+    Frustum& l_Frustum = getFrustum(); // Ensure the frustum is up to date
+
+    for (glm::vec4& plane : l_Frustum.planes)
+    {
+        glm::vec3 positiveVertex;
+        positiveVertex.x = plane.x >= 0 ? aabbMax.x : aabbMin.x;
+        positiveVertex.y = plane.y >= 0 ? aabbMax.y : aabbMin.y;
+        positiveVertex.z = plane.z >= 0 ? aabbMax.z : aabbMin.z;
+
+        if (glm::dot(glm::vec3(plane), positiveVertex) + plane.w < 0)
+            return false;
+    }
+
+    return true;
 }

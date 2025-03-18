@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <Volk/volk.h>
 
+#include "vulkan_queues.hpp"
 #include "utils/identifiable.hpp"
 
 class Engine;
@@ -113,11 +114,11 @@ public:
 
     void drawImgui() const {}
 
-    void recalculate(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
+    bool recalculate(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
 
 private:
-    void recalculateNoise(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
-    void recalculateNormal(const VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
+    bool recalculateNoise(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
+    bool recalculateNormal(VulkanCommandBuffer& p_CmdBuffer, NoiseObject& p_Object) const;
     Engine& m_Engine;
 
     ResourceID m_ComputeNoisePipelineID = UINT32_MAX;
@@ -126,6 +127,8 @@ private:
     ResourceID m_ComputeNormalPipelineLayoutID = UINT32_MAX;
     ResourceID m_ComputeNoiseDescriptorSetLayoutID = UINT32_MAX;
     ResourceID m_ComputeNormalDescriptorSetLayoutID = UINT32_MAX;
+
+    ResourceID m_NoiseComputeCmdBufferID = UINT32_MAX;
 
 private:
     friend struct NoiseObject;
