@@ -27,6 +27,12 @@ class GrassEngine
 public:
     using ImageData = NoiseEngine::NoiseObject::ImageData;
 
+    struct TileBufferElem
+    {
+        uint32_t globalTileIndex;
+        uint32_t tileIndex;
+    };
+
     struct InstanceElem
     {
         alignas(16) glm::vec3 position;
@@ -72,12 +78,12 @@ public:
 
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities, ResourceID p_TransferQueueFamily);
+    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities, ResourceID p_TransferCmdBuffer);
     void initializeImgui();
 
     void cleanupImgui();
 
-    void update(glm::vec2 p_CameraTile);
+    void update(glm::vec2 p_CameraTile, float p_HeightmapScale, float p_TileSize);
 
     void updateTileGridSize(std::array<uint32_t, 4> p_TileGridSizes);
     void updateGrassDensity(std::array<uint32_t, 4> p_NewDensities);
@@ -96,30 +102,24 @@ public:
 
     [[nodiscard]] uint32_t getInstanceCount() const;
     [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
+    [[nodiscard]] uint32_t getPreCullTileCount() const;
+    [[nodiscard]] std::array<uint32_t,4> getPreCullTileCounts() const;
+    [[nodiscard]] uint32_t getPostCullTileCount() const;
+    [[nodiscard]] const std::array<uint32_t, 4>& getPostCullTileCounts() const { return m_PostCullTileCounts; }
+
     [[nodiscard]] bool isDirty() const { return m_NeedsUpdate || m_WindNoise.isNoiseDirty(); }
 
     bool m_RenderEnabled = true;
 
 private:
+    void recalculateCulling(float p_HeightmapScale, float p_TileSize);
+
     Engine& m_Engine;
 
     glm::vec2 m_CurrentTile{ 0, 0 };
 
     std::array<uint32_t, 4> m_TileGridSizes{};
     std::array<uint32_t, 4> m_GrassDensities{};
-
-    std::array<uint32_t, 4> m_ImguiGridSizes{};
-    std::array<uint32_t, 4> m_ImguiGrassDensities{};
-
-    float m_ImguiGrassBaseHeight = 3.f;
-    float m_ImguiGrassHeightVariation = 2.f;
-    float m_ImguiWindDirection = 0.f;
-    float m_ImguiWindSpeed = 0.04f;
-
-    bool m_ImguiWAnimated = true;
-    float m_ImguiWindWSpeed = 0.6f;
-
-    float m_ImguiWidthLODSlope = 1.f;
 
     glm::vec2 m_TileOffset{};
     glm::vec2 m_WindOffset{};
@@ -128,10 +128,17 @@ private:
     bool m_NeedsRebuild = true;
     bool m_NeedsTransfer = true;
 
+    std::vector<uint32_t> m_GlobalTilePositions{};
+    std::vector<TileBufferElem> m_TileVisibilityData{};
+    std::array<uint32_t, 4> m_PostCullTileCounts{};
+
+    float m_CullingMargin = 3.f;
+
     GrassPushConstantData m_PushConstants{};
 
 private:
     void rebuildResources();
+    void recalculateGlobalTilesIndices();
 
     NoiseEngine::NoiseObject m_HeightNoise{};
     NoiseEngine::NoiseObject m_WindNoise{};
@@ -150,5 +157,23 @@ private:
     ResourceID m_GrassDescriptorSetID = UINT32_MAX;
 
     VertexBufferData m_VertexBufferData{};
+
+private:
+    std::array<uint32_t, 4> m_ImguiGridSizes{};
+    std::array<uint32_t, 4> m_ImguiGrassDensities{};
+
+    float m_ImguiGrassBaseHeight = 3.f;
+    float m_ImguiGrassHeightVariation = 2.f;
+    float m_ImguiWindDirection = 0.f;
+    float m_ImguiWindSpeed = 0.04f;
+
+    bool m_ImguiWAnimated = true;
+    float m_ImguiWindWSpeed = 0.6f;
+
+    float m_ImguiWidthLODSlope = 1.f;
+
+    float m_ImguiCullingMargin = 3.f;
+
+    bool m_CullingUpdate = true;
 };
 

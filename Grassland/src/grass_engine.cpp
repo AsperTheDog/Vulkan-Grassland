@@ -2,6 +2,8 @@
 #include "grass_engine.hpp"
 
 #include "camera.hpp"
+#include "camera.hpp"
+#include "camera.hpp"
 #include "engine.hpp"
 #include "vertex.hpp"
 #include "vulkan_device.hpp"
@@ -12,6 +14,8 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
     m_ImguiGridSizes = p_TileGridSizes;
     m_GrassDensities = p_Densities;
     m_ImguiGrassDensities = p_Densities;
+
+    recalculateGlobalTilesIndices();
     
     m_HeightNoise.overridePushConstant({
         .scale = 20.f,
@@ -21,7 +25,6 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
     });
     m_HeightNoise.initialize(512, m_Engine, false);
 
-    
     m_WindNoise.overridePushConstant({
         .scale = 15.f,
         .octaves = 3,
@@ -292,7 +295,7 @@ void GrassEngine::cleanupImgui()
     m_WindNoise.cleanupImgui();
 }
 
-void GrassEngine::update(const glm::vec2 p_CameraTile)
+void GrassEngine::update(const glm::vec2 p_CameraTile, const float p_HeightmapScale, const float p_TileSize)
 {
     m_PushConstants.vpMatrix = m_Engine.getCamera().getVPMatrix();
 
@@ -313,6 +316,8 @@ void GrassEngine::update(const glm::vec2 p_CameraTile)
 
     if (m_ImguiWAnimated)
         m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime * m_ImguiWindSpeed);
+
+    recalculateCulling(p_HeightmapScale, p_TileSize);
 }
 
 void GrassEngine::updateTileGridSize(const std::array<uint32_t, 4> p_TileGridSizes)
@@ -500,6 +505,11 @@ void GrassEngine::drawImgui()
     if (ImGui::Button("Edit Wind Noise"))
         m_WindNoise.toggleImgui();
 
+    ImGui::Separator();
+
+    ImGui::Checkbox("Update Culling", &m_CullingUpdate);
+    ImGui::DragFloat("Culling Margin", &m_ImguiCullingMargin, 0.1f, 0.0f, 10.0f);
+
     ImGui::End();
 
     m_HeightNoise.drawImgui("Grass Height");
@@ -517,6 +527,7 @@ bool GrassEngine::transferCulling(VulkanCommandBuffer& p_CmdBuffer)
         p_CmdBuffer.beginRecording();
     }
 
+    m_NeedsUpdate = true;
     m_NeedsTransfer = false;
 
     return true;
@@ -530,17 +541,78 @@ uint32_t GrassEngine::getInstanceCount() const
 
 std::array<uint32_t, 4> GrassEngine::getInstanceCounts() const
 {
+    const std::array<uint32_t, 4> l_TileCounts = getPreCullTileCounts();
+    return {
+        l_TileCounts[0] * m_GrassDensities[0] * m_GrassDensities[0],
+        l_TileCounts[1] * m_GrassDensities[1] * m_GrassDensities[1],
+        l_TileCounts[2] * m_GrassDensities[2] * m_GrassDensities[2],
+        l_TileCounts[3] * m_GrassDensities[3] * m_GrassDensities[3]
+    };
+}
+
+uint32_t GrassEngine::getPreCullTileCount() const
+{
+    const std::array<uint32_t, 4> l_TileCounts = getPreCullTileCounts();
+    return l_TileCounts[0] + l_TileCounts[1] + l_TileCounts[2] + l_TileCounts[3];
+}
+
+std::array<uint32_t, 4> GrassEngine::getPreCullTileCounts() const
+{
     const uint32_t l_CloseTiles = m_TileGridSizes[0] * m_TileGridSizes[0];
     const uint32_t l_MediumTiles = m_TileGridSizes[1] * m_TileGridSizes[1] - l_CloseTiles;
     const uint32_t l_FarTiles = m_TileGridSizes[2] * m_TileGridSizes[2] - l_CloseTiles - l_MediumTiles;
     const uint32_t l_DistantTiles = m_TileGridSizes[3] * m_TileGridSizes[3] - l_CloseTiles - l_MediumTiles - l_FarTiles;
 
-    const uint32_t l_CloseGrassInTile = m_GrassDensities[0] * m_GrassDensities[0];
-    const uint32_t l_MediumGrassInTile = m_GrassDensities[1] * m_GrassDensities[1];
-    const uint32_t l_FarGrassInTile = m_GrassDensities[2] * m_GrassDensities[2];
-    const uint32_t l_DistantGrassInTile = m_GrassDensities[3] * m_GrassDensities[3];
+    return { l_CloseTiles, l_MediumTiles, l_FarTiles, l_DistantTiles };
+}
 
-    return { l_CloseTiles * l_CloseGrassInTile, l_MediumTiles * l_MediumGrassInTile, l_FarTiles * l_FarGrassInTile, l_DistantTiles * l_DistantGrassInTile };
+uint32_t GrassEngine::getPostCullTileCount() const
+{
+    const std::array<uint32_t, 4>& l_TileCounts = getPostCullTileCounts();
+    return l_TileCounts[0] + l_TileCounts[1] + l_TileCounts[2] + l_TileCounts[3];
+}
+
+void GrassEngine::recalculateCulling(const float p_HeightmapScale, const float p_TileSize)
+{
+    if (!m_CullingUpdate)
+        return;
+
+    if (!m_Engine.getCamera().isFrustumDirty())
+        return;
+    
+    m_TileVisibilityData.clear();
+    uint32_t l_Current = 0;
+    const std::array<uint32_t, 4> l_TileCounts = getPreCullTileCounts();
+    const std::array<uint32_t, 4> l_TileOffsets{
+        0,
+        l_TileCounts[0],
+        l_TileCounts[0] + l_TileCounts[1],
+        l_TileCounts[0] + l_TileCounts[1] + l_TileCounts[2]
+    };
+
+    const glm::vec2 l_TileShift = glm::vec2(static_cast<float>(m_TileGridSizes[3]) * p_TileSize / 2.0f);
+    for (uint32_t l_LOD = 0; l_LOD < l_TileCounts.size(); l_LOD++)
+    {
+        const uint32_t l_First = l_Current;
+        for (uint32_t l_TileIdx = l_TileOffsets[l_LOD]; l_TileIdx < l_TileOffsets[l_LOD] + l_TileCounts[l_LOD]; l_TileIdx++)
+        {
+            const uint32_t l_Tile = m_GlobalTilePositions[l_TileIdx];
+
+            const glm::vec2 l_TilePos = glm::vec2(l_Tile % m_TileGridSizes[3], l_Tile / m_TileGridSizes[3]) * p_TileSize - l_TileShift + m_TileOffset;
+
+            glm::vec3 l_AABBMin = glm::vec3(l_TilePos.x, -p_HeightmapScale, l_TilePos.y) - glm::vec3(m_ImguiCullingMargin);
+            glm::vec3 l_AABBMax = glm::vec3(l_TilePos.x + p_TileSize, 0.0f, l_TilePos.y + p_TileSize) + glm::vec3(m_ImguiCullingMargin);
+
+            if (!m_Engine.getCamera().isBoxInFrustum(l_AABBMin, l_AABBMax))
+                continue;
+
+            m_TileVisibilityData.emplace_back(l_Tile, l_TileIdx);
+            l_Current++;
+        }
+        m_PostCullTileCounts[l_LOD] = l_Current - l_First;
+    }
+
+    m_NeedsTransfer = true;
 }
 
 void GrassEngine::rebuildResources()
@@ -573,5 +645,45 @@ void GrassEngine::rebuildResources()
 
     l_Device.updateDescriptorSets(l_DescriptorWrite);
 
+    recalculateGlobalTilesIndices();
+
     m_NeedsRebuild = false;
+}
+
+void GrassEngine::recalculateGlobalTilesIndices()
+{
+    m_GlobalTilePositions.clear();
+    m_GlobalTilePositions.reserve(getPreCullTileCount());
+
+    auto l_GetGlobalFromLocal = [](const uint32_t p_InnerRing, const uint32_t p_OuterRing, const uint32_t p_GridSize, const uint32_t p_LocalIndex)
+    {
+        const uint32_t l_MidSize = p_OuterRing - p_InnerRing;
+        const uint32_t l_MidHalfSize = l_MidSize / 2;
+        uint32_t l_FullRows = std::min(p_LocalIndex / p_OuterRing, l_MidHalfSize);
+        uint32_t l_CurrentIndex = static_cast<uint32_t>(std::max(0, static_cast<int32_t>(p_LocalIndex) - static_cast<int32_t>(l_MidHalfSize * p_OuterRing)));
+        const uint32_t l_InnerRowOffset = l_CurrentIndex % l_MidSize;
+        const uint32_t l_MidRows = std::min(l_CurrentIndex / l_MidSize, p_InnerRing);
+        l_CurrentIndex = std::max(0, static_cast<int32_t>(l_CurrentIndex) - static_cast<int32_t>(p_InnerRing * l_MidSize));
+        l_FullRows += l_CurrentIndex / p_OuterRing;
+
+        const uint32_t l_ExternSize = p_GridSize - p_OuterRing;
+        const uint32_t l_ExternHalfSize = l_ExternSize / 2;
+        const uint32_t l_ExternOffset = (p_GridSize * l_ExternHalfSize) + (l_FullRows + l_MidRows) * l_ExternSize + l_ExternHalfSize;
+        const bool l_ExtraRow = l_FullRows == l_MidHalfSize && l_InnerRowOffset >= l_MidHalfSize && l_MidRows < p_InnerRing;
+        const uint32_t l_InnerOffset = (l_ExtraRow ? l_MidRows + 1 : l_MidRows) * p_InnerRing;
+
+        return p_LocalIndex + l_ExternOffset + l_InnerOffset;
+    };
+
+    const std::array<uint32_t, 4> l_TileCounts = getPreCullTileCounts();
+
+    for (uint32_t i = 0; i < l_TileCounts[0]; ++i)
+        m_GlobalTilePositions.push_back(l_GetGlobalFromLocal(0, m_TileGridSizes[0], m_TileGridSizes[3], i));
+    for (uint32_t i = 0; i < l_TileCounts[1]; ++i)
+        m_GlobalTilePositions.push_back(l_GetGlobalFromLocal(m_TileGridSizes[0], m_TileGridSizes[1], m_TileGridSizes[3], i));
+    for (uint32_t i = 0; i < l_TileCounts[2]; ++i)
+        m_GlobalTilePositions.push_back(l_GetGlobalFromLocal(m_TileGridSizes[1], m_TileGridSizes[2], m_TileGridSizes[3], i));
+    for (uint32_t i = 0; i < l_TileCounts[3]; ++i)
+        m_GlobalTilePositions.push_back(l_GetGlobalFromLocal(m_TileGridSizes[2], m_TileGridSizes[3], m_TileGridSizes[3], i));
+
 }

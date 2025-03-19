@@ -31,8 +31,6 @@ public:
 	glm::mat4& getProjMatrix();
 	glm::mat4& getVPMatrix();
 
-	[[nodiscard]] Data getData();
-
 	void mouseMoved(int32_t relX, int32_t relY);
 	void keyPressed(uint32_t key);
 	void keyReleased(uint32_t key);
@@ -40,7 +38,11 @@ public:
     void setMouseCaptured(bool captured);
     void mouseScrolled(int32_t y);
 
+    [[nodiscard]] bool isFrustumDirty() const { return m_Frustum.frustumDirty; }
     [[nodiscard]] bool isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax);
+
+    void setViewDirty();
+    void setProjDirty();
 
 private:
     struct Frustum
@@ -71,6 +73,7 @@ private:
 	glm::mat4 m_viewMatrix{};
 	bool m_projDirty;
 	glm::mat4 m_projMatrix{};
+
 	glm::mat4 m_VPMatrix{};
     Frustum m_Frustum;
 

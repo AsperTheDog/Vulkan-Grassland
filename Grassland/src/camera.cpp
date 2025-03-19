@@ -21,34 +21,34 @@ void Camera::move(const glm::vec3 dir)
 {
 	m_Position += dir;
 	calculateRightVector();
-	m_viewDirty = true;
+	setViewDirty();
 }
 
 void Camera::lookAt(const glm::vec3 target)
 {
 	m_Front = glm::normalize(target - m_Position);
 	calculateRightVector();
-	m_viewDirty = true;
+	setViewDirty();
 }
 
 void Camera::setPosition(const glm::vec3 pos)
 {
 	m_Position = pos;
 	calculateRightVector();
-	m_viewDirty = true;
+	setViewDirty();
 }
 
 void Camera::setDir(const glm::vec3 dir)
 {
 	m_Front = dir;
 	calculateRightVector();
-	m_viewDirty = true;
+	setViewDirty();
 }
 
 void Camera::setScreenSize(const uint32_t width, const uint32_t height)
 {
 	m_aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-	m_projDirty = true;
+	setProjDirty();
 }
 
 void Camera::setProjectionData(const float fov, const float near, const float far)
@@ -236,9 +236,11 @@ void Camera::updateEvents(const float delta)
 
 Camera::Frustum& Camera::getFrustum()
 {
-    if (!m_Frustum.frustumDirty) return m_Frustum; // Only update if necessary
+    if (!m_Frustum.frustumDirty) 
+        return m_Frustum;
 
-    glm::mat4 l_VP = getVPMatrix();                // Ensure the VP matrix is up to date
+    // Updates VP matrix if dirty
+    glm::mat4 l_VP = glm::transpose(getVPMatrix());
 
     // Extract planes from the VP matrix
     m_Frustum.planes[0] = l_VP[3] + l_VP[0]; // Left
@@ -248,11 +250,16 @@ Camera::Frustum& Camera::getFrustum()
     m_Frustum.planes[4] = l_VP[3] + l_VP[2]; // Near
     m_Frustum.planes[5] = l_VP[3] - l_VP[2]; // Far
 
-    // Normalize each plane
     for (glm::vec4& plane : m_Frustum.planes)
-        plane = glm::normalize(plane);
+    {
+        glm::vec3 l_Normal = glm::vec3(plane);
+        const float l_Length = glm::length(l_Normal);
+        plane /= l_Length;
+    }
 
-    m_Frustum.frustumDirty = false; // Frustum is now up to date
+    m_Frustum.frustumDirty = false;
+
+    return m_Frustum;
 }
 
 void Camera::calculateRightVector()
@@ -274,18 +281,37 @@ void Camera::mouseScrolled(const int32_t y)
 
 bool Camera::isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax)
 {
-    Frustum& l_Frustum = getFrustum(); // Ensure the frustum is up to date
+    // Updates Frustum if dirty
+    Frustum& l_Frustum = getFrustum();
 
-    for (glm::vec4& plane : l_Frustum.planes)
+    // Check if the box is in the frustum
+    for (const glm::vec4& l_Plane : l_Frustum.planes)
     {
-        glm::vec3 positiveVertex;
-        positiveVertex.x = plane.x >= 0 ? aabbMax.x : aabbMin.x;
-        positiveVertex.y = plane.y >= 0 ? aabbMax.y : aabbMin.y;
-        positiveVertex.z = plane.z >= 0 ? aabbMax.z : aabbMin.z;
+        glm::vec3 normal = glm::vec3(l_Plane); // Extract the normal from the plane equation
 
-        if (glm::dot(glm::vec3(plane), positiveVertex) + plane.w < 0)
+        // Compute the negative vertex (the point closest to the plane)
+        glm::vec3 negative = aabbMin;
+
+        if (normal.x >= 0.0f) negative.x = aabbMax.x;
+        if (normal.y >= 0.0f) negative.y = aabbMax.y;
+        if (normal.z >= 0.0f) negative.z = aabbMax.z;
+
+        // If the negative vertex is outside the plane, the AABB is fully outside
+        if (glm::dot(normal, negative) + l_Plane.w < 0.0f)
+        {
             return false;
+        }
     }
+}
 
-    return true;
+void Camera::setViewDirty()
+{
+    m_viewDirty = true;
+    m_Frustum.frustumDirty = true;
+}
+
+void Camera::setProjDirty()
+{
+    m_projDirty = true;
+    m_Frustum.frustumDirty = true;
 }

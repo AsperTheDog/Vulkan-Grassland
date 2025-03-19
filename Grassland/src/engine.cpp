@@ -44,7 +44,7 @@ static VulkanGPU chooseCorrectGPU()
 }
 
 Engine::Engine()
-    : m_Window("Vulkan", 1920, 1080), m_Camera(glm::vec3{0.f, 0.f, 5.f}, glm::vec3{0.f, 0.f, -1.f})
+    : m_Window("Vulkan", 1920, 1080), m_Camera(glm::vec3{0.f, -20.f, 0.f}, glm::vec3{0.f, 0.f, -1.f})
 {
     // Vulkan Instance
     Logger::setRootContext("Engine init");
@@ -285,7 +285,7 @@ void Engine::update()
     m_Heightmap.updateGridSize(m_PlaneEngine.getGridSize());
     m_Heightmap.updateHeightScale(m_PlaneEngine.getHeightScale());
 
-    m_GrassEngine.update(m_PlaneEngine.getCameraTile());
+    m_GrassEngine.update(l_CameraTile, m_PlaneEngine.getHeightScale(), m_PlaneEngine.getTileSize());
 
     if (m_Heightmap.isDirty())
         m_GrassEngine.setDirty();
