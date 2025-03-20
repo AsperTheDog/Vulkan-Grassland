@@ -23,6 +23,7 @@ void PlaneEngine::update(const glm::vec2 p_CamTile)
     m_PushConstants.mvp = m_Engine.getCamera().getVPMatrix();
     m_PushConstants.cameraPos = m_Engine.getCamera().getPosition();
     m_PushConstants.cameraTile = p_CamTile;
+    m_PushConstants.lightDir = m_Engine.getLightDir();
 }
 
 void PlaneEngine::render(const VulkanCommandBuffer& p_CmdBuffer) const

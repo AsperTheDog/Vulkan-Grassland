@@ -34,6 +34,9 @@ public:
     Camera& getCamera() { return m_Camera; }
     NoiseEngine::NoiseObject& getHeightmap() { return m_Heightmap; }
 
+    void setLightDir(float p_Azimuth, float p_Altitude);
+    [[nodiscard]] glm::vec3 getLightDir() const;
+
 private:
     void update();
 
@@ -98,12 +101,16 @@ private: // Plane
     NoiseEngine::NoiseObject m_Heightmap{};
 
     glm::vec2 m_CurrentTile{ 0, 0 };
+    glm::vec3 m_LightDir{};
 
     bool m_MustWaitForGrass = false;
 
 private:
     void initImgui() const;
     void drawImgui();
+
+    float m_LightDirAltitude = 0.f;
+    float m_LightDirAzimuth = 0.f;
 
 private:
     friend class PlaneEngine;

@@ -179,7 +179,6 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
 
         VulkanBinding l_VertexBinding{ 1, VK_VERTEX_INPUT_RATE_VERTEX, sizeof(Vertex) };
         l_VertexBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, position));
-        l_VertexBinding.addAttribDescription(VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, normal));
 
         VulkanPipelineBuilder l_PipelineBuilder{l_Device.getID()};
         l_PipelineBuilder.addVertexBinding(l_InstanceBinding);
@@ -213,15 +212,11 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
             const float l_WeightSq = l_Weight * l_Weight;
 
             l_BladeVertices[i].position = glm::vec2(l_Lerp(0.1f, 0.0f, l_WeightSq), -l_Weight);
-            l_BladeVertices[i].normal = glm::vec2(0.3f, 0.0f);
 
             l_BladeVertices[i + 1].position = l_BladeVertices[i].position;
             l_BladeVertices[i + 1].position.x *= -1.0f;
-            l_BladeVertices[i + 1].normal = l_BladeVertices[i].normal;
-            l_BladeVertices[i + 1].normal.x *= -1.0f;
         }
         l_BladeVertices.back().position = glm::vec2(0.0f, -1.0f);
-        l_BladeVertices.back().normal = glm::vec2(0.0f, 0.0f);
 
         m_VertexBufferData.m_IndexStart = sizeof(l_BladeVertices);
 
@@ -316,6 +311,8 @@ void GrassEngine::cleanupImgui()
 void GrassEngine::update(const glm::ivec2 p_CameraTile, const float p_HeightmapScale, const float p_TileSize)
 {
     m_PushConstants.vpMatrix = m_Engine.getCamera().getVPMatrix();
+    m_PushConstants.cameraPos = m_Engine.getCamera().getPosition();
+    m_PushConstants.lightDir = m_Engine.getLightDir();
 
     if (m_CurrentTile != p_CameraTile)
     {
@@ -545,6 +542,10 @@ void GrassEngine::drawImgui()
 
     ImGui::DragFloat("Tilt", &m_PushConstants.tilt, 0.01f, 0.0f, 2.0f);
     ImGui::DragFloat("Tilt Bend", &m_PushConstants.bend, 0.01f, 0.0f, 5.0f);
+
+    ImGui::Separator();
+
+    ImGui::DragFloat("Grass Roundness", &m_PushConstants.grassRoundness, 0.01f, 0.0f, 0.99f);
 
     ImGui::Separator();
 

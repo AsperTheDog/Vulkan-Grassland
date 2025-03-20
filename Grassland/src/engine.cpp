@@ -172,6 +172,8 @@ Engine::Engine()
     m_GrassEngine.initializeImgui();
 
     m_Window.toggleMouseCapture();
+
+    setLightDir(0.f, 0.5f);
 }
 
 Engine::~Engine()
@@ -265,6 +267,24 @@ VulkanDevice& Engine::getDevice() const
 VulkanSwapchain& Engine::getSwapchain() const
 {
     return VulkanSwapchainExtension::get(m_DeviceID)->getSwapchain(m_SwapchainID);
+}
+
+void Engine::setLightDir(const float p_Azimuth, const float p_Altitude)
+{
+    m_LightDirAltitude = p_Altitude;
+    m_LightDirAzimuth = p_Azimuth;
+    const float l_Altitude = m_LightDirAltitude * glm::half_pi<float>() + glm::half_pi<float>();
+    const float l_Azimuth = m_LightDirAzimuth * glm::two_pi<float>();
+    m_LightDir = glm::normalize(glm::vec3{
+        std::cos(l_Altitude) * std::sin(l_Azimuth),
+        -std::sin(l_Altitude),
+        std::cos(l_Altitude) * std::cos(l_Azimuth)
+    });
+}
+
+glm::vec3 Engine::getLightDir() const
+{
+    return m_LightDir;
 }
 
 void Engine::update()
@@ -543,7 +563,23 @@ void Engine::drawImgui()
 
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::Text("Camera position (%.2f, %.2f, %.2f)", m_Camera.getPosition().x, m_Camera.getPosition().y, m_Camera.getPosition().z);
+
+    ImGui::End();
+
+    ImGui::Begin("General");
+    
+    float l_LightDirAzimuth = m_LightDirAzimuth;
+    ImGui::DragFloat("Light azimuth", &l_LightDirAzimuth, 0.01f, 0.f, 1.f);
+    float l_LightDirAltitude = m_LightDirAltitude;
+    ImGui::DragFloat("Light altitude", &l_LightDirAltitude, 0.01f, 0.f, 1.f);
+
+    if (l_LightDirAzimuth != m_LightDirAzimuth || l_LightDirAltitude != m_LightDirAltitude)
+    {
+        setLightDir(l_LightDirAzimuth, l_LightDirAltitude);
+    }
+
     ImGui::Separator();
+
     if (ImGui::Button("Edit heightmap"))
         m_Heightmap.toggleImgui();
 

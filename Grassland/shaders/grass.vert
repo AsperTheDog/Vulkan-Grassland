@@ -7,6 +7,7 @@ layout(push_constant) uniform PushConstants {
     float bend;
     vec2 windDir;
     float windStrength;
+    float grassRoundness;
 } pc;
 
 layout(binding = 0) uniform sampler2D windNoise;
@@ -19,16 +20,14 @@ layout(location = 3) in float inInstanceHeight; // Height of the grass blade
 
 // Per-vertex attributes
 layout(location = 4) in vec2 vertexPosition;  // Vertex positions
-layout(location = 5) in vec2 vertexNormal;    // Vertex normals
 
 
 layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out vec3 fragPosition;
 layout(location = 2) out float fragWeight;
 
-mat3 getRotationMatrix(vec3 axis, float angle)
+mat3 getPositionRotationMatrix(vec3 axis, float angle)
 {
-    axis = normalize(axis);
     float s = sin(angle);
     float c = cos(angle);
     float oc = 1.0 - c;
@@ -42,6 +41,7 @@ mat3 getRotationMatrix(vec3 axis, float angle)
 
 void main() {
     vec2 finalVertPos = vertexPosition;
+    float xSign = -sign(finalVertPos.x);
     finalVertPos.x *= pc.widthMult;
     float weight = -finalVertPos.y;
 
@@ -55,14 +55,16 @@ void main() {
     float windBendIntensity = mix(0.0, texture(windNoise, uv).r * pc.windStrength, weight);
     vec3 windAxis = normalize(cross(vec3(0.0, 1.0, 0.0), vec3(-pc.windDir.x, 0.0, -pc.windDir.y)));
     
-    mat3 rotation = getRotationMatrix(windAxis, windBendIntensity) 
-                  * getRotationMatrix(vec3(0.0, 1.0, 0.0), inInstRotation) 
-                  * getRotationMatrix(vec3(1.0, 0.0, 0.0), localTilt);
+    mat3 rotation = getPositionRotationMatrix(windAxis, windBendIntensity) 
+                  * getPositionRotationMatrix(vec3(0.0, 1.0, 0.0), inInstRotation) 
+                  * getPositionRotationMatrix(vec3(1.0, 0.0, 0.0), localTilt);
 
     vec3 windBendPos = rotation * vec3(finalVertPos, 0.0);
 
+    vec3 normal = vec3(pc.grassRoundness * xSign, 0.0, 1.0);
+    
     fragPosition = inInstPosition + windBendPos;
-    fragNormal = rotation * vec3(vertexNormal, 0.0);
+    fragNormal = normalize(rotation * normalize(normal));
     fragWeight = weight;
 
     gl_Position = pc.VPMatrix * vec4(fragPosition, 1.0);

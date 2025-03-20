@@ -26,6 +26,7 @@ public:
         alignas(4)  float heightOffset = 0.5f;
         alignas(16) glm::mat4 mvp;
         alignas(16) glm::vec3 color = { 0.018f, 0.113f, 0.0f };
+        alignas(16) glm::vec3 lightDir;
 
         static uint32_t getVertexShaderOffset() { return offsetof(PushConstantData, gridSize); }
         static uint32_t getTessellationControlShaderOffset() { return offsetof(PushConstantData, cameraPos); }

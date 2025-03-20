@@ -33,6 +33,7 @@ void main() {
     worldPos.y += pushConstants.heightOffset;
 
     outNormal = normalize(texture(normalmap, outUV).xyz * 2.0 - 1.0);
+    outNormal.y *= -1.0;
 
     gl_Position = pushConstants.mvpMatrix * vec4(worldPos, 1.0);
 }
