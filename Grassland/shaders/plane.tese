@@ -3,6 +3,7 @@ layout(quads, equal_spacing, cw) in;
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 44) float heightScale;
+    float heightOffset;
     mat4 mvpMatrix;
 } pushConstants;
 
@@ -29,6 +30,7 @@ void main() {
     // Apply heightmap displacement
     float height = texture(heightmap, outUV).r * pushConstants.heightScale;
     worldPos.y -= height;
+    worldPos.y += pushConstants.heightOffset;
 
     outNormal = normalize(texture(normalmap, outUV).xyz * 2.0 - 1.0);
 

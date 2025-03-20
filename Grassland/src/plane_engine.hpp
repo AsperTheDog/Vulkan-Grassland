@@ -14,7 +14,7 @@ class PlaneEngine
 public:
     struct PushConstantData
     {
-        alignas(4)  uint32_t gridSize = 30;
+        alignas(4)  uint32_t gridSize = 31;
         alignas(4)  float patchSize = 20.f;
         alignas(8)  glm::vec2 cameraTile;
         alignas(16) glm::vec3 cameraPos;
@@ -23,6 +23,7 @@ public:
         alignas(4)  float tessFactor = 0.002f;
         alignas(4)  float tessSlope = 0.05f;
         alignas(4)  float heightScale = 15.f;
+        alignas(4)  float heightOffset = 0.5f;
         alignas(16) glm::mat4 mvp;
         alignas(16) glm::vec3 color = { 0.018f, 0.113f, 0.0f };
 

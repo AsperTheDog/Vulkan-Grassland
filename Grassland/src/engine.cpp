@@ -162,7 +162,7 @@ Engine::Engine()
     m_Heightmap.initialize(1024, *this, true);
 
     m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 30}, {120, 100, 80, 60});
+    m_GrassEngine.initalize({7, 11, 17, 31}, {120, 100, 80, 60});
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -425,7 +425,7 @@ bool Engine::updateGrass(const bool p_GrassHeightComputed, const bool p_DataTran
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
 
-    const bool l_Recomputed = m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale());
+    const bool l_Recomputed = m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridSize(), m_PlaneEngine.getHeightScale());
 
     if (l_Recomputed)
     {

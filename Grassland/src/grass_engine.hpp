@@ -89,7 +89,7 @@ public:
 
     void cleanupImgui();
 
-    void update(glm::vec2 p_CameraTile, float p_HeightmapScale, float p_TileSize);
+    void update(glm::ivec2 p_CameraTile, float p_HeightmapScale, float p_TileSize);
 
     void updateTileGridSize(std::array<uint32_t, 4> p_TileGridSizes);
     void updateGrassDensity(std::array<uint32_t, 4> p_NewDensities);
@@ -97,7 +97,7 @@ public:
     void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_Offset);
     void setDirty() { m_NeedsUpdate = true; }
 
-    bool recompute(VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale);
+    bool recompute(VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, uint32_t p_GridSize, float p_HeightmapScale);
     bool recomputeWind(VulkanCommandBuffer& p_CmdBuffer);
     bool recomputeHeight(VulkanCommandBuffer& p_CmdBuffer);
     void render(const VulkanCommandBuffer& p_CmdBuffer);
@@ -124,10 +124,12 @@ private:
 
     Engine& m_Engine;
 
-    glm::vec2 m_CurrentTile{ 0, 0 };
+    glm::ivec2 m_CurrentTile{ 0, 0 };
 
     std::array<uint32_t, 4> m_TileGridSizes{};
     std::array<uint32_t, 4> m_GrassDensities{};
+
+    std::array<float, 4> m_GrassWidths{0.7f, 1.13f, 3.04f, 7.77f};
 
     glm::vec2 m_TileOffset{};
     glm::vec2 m_WindOffset{};
@@ -143,7 +145,7 @@ private:
 
     std::array<glm::vec3, 4> m_LODColors{};
 
-    float m_CullingMargin = 3.f;
+    float m_CullingMargin = 0.f;
 
     GrassPushConstantData m_PushConstants{};
 
@@ -182,13 +184,12 @@ private:
     bool m_ImguiWAnimated = true;
     float m_ImguiWindWSpeed = 0.6f;
 
-    float m_ImguiWidthLODSlope = 1.f;
-
     float m_ImguiCullingMargin = 3.f;
 
     bool m_RandomizeLODColors = false;
     bool m_CullingEnable = true;
     bool m_CullingUpdate = true;
+    bool m_NeedsCullingUpdate = true;
 
     //Debug
     uint32_t m_DebugInstanceBufferSize = 0;

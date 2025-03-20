@@ -56,9 +56,10 @@ void PlaneEngine::render(const VulkanCommandBuffer& p_CmdBuffer) const
 
 void PlaneEngine::drawImgui()
 {
-    ImGui::Begin("Controls");
+    ImGui::Begin("Terrain");
 
     ImGui::DragFloat("Height scale", &m_PushConstants.heightScale, 0.1f);
+    ImGui::DragFloat("Height offset", &m_PushConstants.heightOffset, 0.1f);
     ImGui::Separator();
     int l_GridSize = m_PushConstants.gridSize;
     ImGui::DragInt("Grid size", &l_GridSize, 1, 1, 100);

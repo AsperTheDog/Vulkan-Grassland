@@ -68,7 +68,7 @@ TileData getTileData()
 
     TileData data;
     data.offset = vec2(globalPosIndex % pushConstants.tileGridSizes.w, globalPosIndex / pushConstants.tileGridSizes.w) * pushConstants.tileSize;
-    data.offset -= vec2(pushConstants.tileGridSizes.w * pushConstants.tileSize / 2.0);
+    data.offset -= vec2(pushConstants.tileGridSizes.w / 2) * pushConstants.tileSize;
     data.density = densities[ringIndex];
     data.bladeOffset = localInstanceIndex % density;
     return data;

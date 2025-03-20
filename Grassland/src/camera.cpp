@@ -280,8 +280,8 @@ void Camera::setMouseCaptured(const bool captured)
 void Camera::mouseScrolled(const int32_t y)
 {
     // Change moving speed
-    m_movingSpeed += y * 0.2f;
-    m_movingSpeed = std::clamp(m_movingSpeed, 0.2f, 100.0f);
+    m_movingSpeed = (1.f + y * 0.05f) * m_movingSpeed;
+    m_movingSpeed = std::clamp(m_movingSpeed, 0.5f, 300.0f);
 }
 
 bool Camera::isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax)

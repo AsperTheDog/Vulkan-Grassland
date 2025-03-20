@@ -313,7 +313,7 @@ void GrassEngine::cleanupImgui()
     m_WindNoise.cleanupImgui();
 }
 
-void GrassEngine::update(const glm::vec2 p_CameraTile, const float p_HeightmapScale, const float p_TileSize)
+void GrassEngine::update(const glm::ivec2 p_CameraTile, const float p_HeightmapScale, const float p_TileSize)
 {
     m_PushConstants.vpMatrix = m_Engine.getCamera().getVPMatrix();
 
@@ -335,8 +335,8 @@ void GrassEngine::update(const glm::vec2 p_CameraTile, const float p_HeightmapSc
     if (m_ImguiWAnimated)
         m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime * m_ImguiWindSpeed);
 
-    if (m_NeedsTileRebuild)
-        recalculateGlobalTilesIndices();
+    if (m_Engine.getCamera().isFrustumDirty())
+        m_NeedsCullingUpdate = true;
 
     recalculateCulling(p_HeightmapScale, p_TileSize);
 }
@@ -364,7 +364,7 @@ void GrassEngine::changeCurrentCenter(const glm::ivec2 p_NewCenter, const glm::v
     m_NeedsUpdate = true;
 }
 
-bool GrassEngine::recompute(VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const float p_GridExtent, const float p_HeightmapScale)
+bool GrassEngine::recompute(VulkanCommandBuffer& p_CmdBuffer, const float p_TileSize, const uint32_t p_GridSize, const float p_HeightmapScale)
 {
     if (!m_NeedsUpdate)
         return false;
@@ -384,11 +384,11 @@ bool GrassEngine::recompute(VulkanCommandBuffer& p_CmdBuffer, const float p_Tile
 
     const ComputePushConstantData l_PushConstants{
         .centerPos = m_CurrentTile,
-        .worldOffset = glm::vec2(m_CurrentTile) - glm::vec2(p_GridExtent / 2.0f),
+        .worldOffset = glm::vec2(m_CurrentTile) - (glm::vec2(p_GridSize / 2) * p_TileSize),
         .tileGridSizes = glm::uvec4(m_TileGridSizes[0], m_TileGridSizes[1], m_TileGridSizes[2], m_TileGridSizes[3]),
         .tileDensities = glm::uvec4(m_GrassDensities[0], m_GrassDensities[1], m_GrassDensities[2], m_GrassDensities[3]),
         .tileSize = p_TileSize,
-        .gridExtent = p_GridExtent,
+        .gridExtent = p_TileSize * p_GridSize,
         .heightmapScale = p_HeightmapScale,
         .grassBaseHeight = m_ImguiGrassBaseHeight,
         .grassHeightVariation = m_ImguiGrassHeightVariation
@@ -451,7 +451,6 @@ void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer)
     p_CmdBuffer.cmdBindIndexBuffer(m_VertexBufferData.m_LODBuffer, m_VertexBufferData.m_IndexStart, VK_INDEX_TYPE_UINT16);
     p_CmdBuffer.cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_GRAPHICS, m_GrassPipelineLayoutID, m_GrassDescriptorSetID);
 
-    const float l_Width = m_PushConstants.widthMult;
     const glm::vec3 l_BaseColor = m_PushConstants.baseColor;
     const glm::vec3 l_TipColor = m_PushConstants.tipColor;
 
@@ -466,19 +465,18 @@ void GrassEngine::render(const VulkanCommandBuffer&  p_CmdBuffer)
             m_PushConstants.baseColor = glm::vec3(0.0f, 0.0f, 0.0f);
             m_PushConstants.tipColor = m_LODColors[i];
         }
-
+        
+        m_PushConstants.widthMult = m_GrassWidths[i];
         m_DebugInstanceCalls[i] = l_InstanceCounts[i];
         m_DebugInstanceOffsets[i] = l_Offset;
         p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_VERTEX_BIT, GrassPushConstantData::getVertexShaderOffset(), GrassPushConstantData::getVertexShaderSize(), m_PushConstants.getVertexShaderData());
         p_CmdBuffer.cmdPushConstant(m_GrassPipelineLayoutID, VK_SHADER_STAGE_FRAGMENT_BIT, GrassPushConstantData::getFragmentShaderOffset(), GrassPushConstantData::getFragmentShaderSize(), m_PushConstants.getFragmentShaderData());
         p_CmdBuffer.cmdDrawIndexed(m_VertexBufferData.m_IndexCounts[i], m_VertexBufferData.m_IndexOffsets[i], 0, l_InstanceCounts[i], l_Offset);
         l_Offset += l_InstanceCounts[i];
-        m_PushConstants.widthMult += m_ImguiWidthLODSlope;
     }
 
     m_PushConstants.baseColor = l_BaseColor;
     m_PushConstants.tipColor = l_TipColor;
-    m_PushConstants.widthMult = l_Width;
 }
 
 void GrassEngine::drawImgui()
@@ -528,8 +526,13 @@ void GrassEngine::drawImgui()
 
     ImGui::Separator();
 
-    ImGui::DragFloat("Width", &m_PushConstants.widthMult, 0.01f, 0.01f, 2.0f);
-    ImGui::DragFloat("Width LOD Slope", &m_ImguiWidthLODSlope, 0.01f, 0.01f, 1.0f);
+    ImGui::DragFloat("Width Close", &m_GrassWidths[0], 0.01f, 0.01f, 10.0f);
+    ImGui::DragFloat("Width Medium", &m_GrassWidths[1], 0.01f, 0.01f, 10.0f);
+    ImGui::DragFloat("Width Far", &m_GrassWidths[2], 0.01f, 0.01f, 10.0f);
+    ImGui::DragFloat("Width Distant", &m_GrassWidths[3], 0.01f, 0.01f, 10.0f);
+
+    ImGui::Separator();
+
     ImGui::Checkbox("LOD Random Colors", &m_RandomizeLODColors);
     if (!m_RandomizeLODColors)
     {
@@ -694,13 +697,13 @@ void GrassEngine::recalculateCulling(const float p_HeightmapScale, const float p
     if (!m_CullingUpdate)
         return;
 
-    if (!m_Engine.getCamera().isFrustumDirty())
+    rebuildTileResources();
+
+    if (!m_NeedsCullingUpdate)
         return;
 
     if (!m_CullingEnable)
         m_Engine.getCamera().recalculateFrustum();
-
-    rebuildTileResources();
     
     m_TileVisibilityData.clear();
     uint32_t l_Current = 0;
@@ -712,7 +715,7 @@ void GrassEngine::recalculateCulling(const float p_HeightmapScale, const float p
         l_TileCounts[0] + l_TileCounts[1] + l_TileCounts[2]
     };
 
-    const glm::vec2 l_TileShift = glm::vec2(static_cast<float>(m_TileGridSizes[3]) * p_TileSize / 2.0f);
+    const glm::vec2 l_TileShift = glm::vec2((m_TileGridSizes[3] / 2) * p_TileSize);
     for (uint32_t l_LOD = 0; l_LOD < l_TileCounts.size(); l_LOD++)
     {
         const uint32_t l_First = l_Current;
@@ -721,7 +724,7 @@ void GrassEngine::recalculateCulling(const float p_HeightmapScale, const float p
             const uint32_t l_Tile = m_GlobalTilePositions[l_TileIdx];
             if (m_CullingEnable)
             {
-                const glm::vec2 l_TilePos = glm::vec2(l_Tile % m_TileGridSizes[3], l_Tile / m_TileGridSizes[3]) * p_TileSize - l_TileShift + m_CurrentTile;
+                const glm::vec2 l_TilePos = glm::vec2(l_Tile % m_TileGridSizes[3], l_Tile / m_TileGridSizes[3]) * p_TileSize - l_TileShift + glm::vec2(m_CurrentTile);
 
                 glm::vec3 l_AABBMin = glm::vec3(l_TilePos.x, -p_HeightmapScale, l_TilePos.y) - glm::vec3(m_ImguiCullingMargin);
                 glm::vec3 l_AABBMax = glm::vec3(l_TilePos.x + p_TileSize, 0.0f, l_TilePos.y + p_TileSize) + glm::vec3(m_ImguiCullingMargin);
@@ -736,6 +739,7 @@ void GrassEngine::recalculateCulling(const float p_HeightmapScale, const float p
         m_PostCullTileCounts[l_LOD] = l_Current - l_First;
     }
 
+    m_NeedsCullingUpdate = false;
     m_NeedsTransfer = true;
 }
 
@@ -815,8 +819,10 @@ void GrassEngine::rebuildTileResources()
 
     l_Device.updateDescriptorSets(l_DescriptorWrite);
 
+    recalculateGlobalTilesIndices();
+
     m_NeedsTileRebuild = false;
-    m_NeedsTransfer = true;
+    m_NeedsCullingUpdate = true;
 }
 
 void GrassEngine::recalculateGlobalTilesIndices()
