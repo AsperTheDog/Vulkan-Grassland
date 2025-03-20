@@ -114,7 +114,7 @@ Engine::Engine()
     // Depth Buffer
     m_DepthBuffer = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_D32_SFLOAT, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0);
     VulkanImage& l_DepthImage = l_Device.getImage(m_DepthBuffer);
-    l_DepthImage.allocateFromFlags({ VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, false });
+    l_DepthImage.allocateFromFlags({ .desiredProperties= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, .undesiredProperties= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, .allowUndesired= false});
     m_DepthBufferView = l_DepthImage.createImageView(VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     l_Device.configureStagingBuffer(100LL * 1024 * 1024, m_TransferQueuePos);
@@ -159,10 +159,10 @@ Engine::Engine()
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
     m_NoiseEngine.initialize();
-    m_Heightmap.initialize(2048, *this, true);
+    m_Heightmap.initialize(1024, *this, true);
 
     m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 30}, {90, 60, 50, 40}, m_TransferCmdBufferID);
+    m_GrassEngine.initalize({7, 11, 17, 30}, {120, 100, 80, 60});
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -334,7 +334,7 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
 
     std::array<VkClearValue, 2> clearValues;
     clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-    clearValues[1].depthStencil = { 1.0f, 0 };
+    clearValues[1].depthStencil = { .depth= 1.0f, .stencil= 0};
 
     p_CmdBuffer.beginRecording();
     p_CmdBuffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
@@ -425,7 +425,7 @@ bool Engine::updateGrass(const bool p_GrassHeightComputed, const bool p_DataTran
     VulkanDevice& l_Device = VulkanContext::getDevice(m_DeviceID);
     VulkanCommandBuffer& l_Buffer = l_Device.getCommandBuffer(m_ComputeCmdBufferID, 0);
 
-    const bool l_Recomputed = m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale(), m_GraphicsQueuePos.familyIndex);
+    const bool l_Recomputed = m_GrassEngine.recompute(l_Buffer, m_PlaneEngine.getTileSize(), m_PlaneEngine.getGridExtent(), m_PlaneEngine.getHeightScale());
 
     if (l_Recomputed)
     {
@@ -499,18 +499,19 @@ void Engine::initImgui() const
 
     const std::array<VkDescriptorPoolSize, 11> l_PoolSizes =
     {{
-        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-    }};
+        { .type= VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, .descriptorCount= 1000},
+	    { .type= VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, .descriptorCount= 1000}
+	    }
+    };
     const uint32_t l_ImguiPoolID = l_Device.createDescriptorPool(l_PoolSizes, 1000U * static_cast<uint32_t>(l_PoolSizes.size()), VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT);
 
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(l_Device);

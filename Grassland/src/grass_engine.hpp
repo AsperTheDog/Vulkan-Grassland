@@ -27,10 +27,16 @@ class GrassEngine
 public:
     using ImageData = NoiseEngine::NoiseObject::ImageData;
 
+    struct TileBufferHeader
+    {
+		alignas(16) glm::uvec4 instanceOffsets;
+        alignas(16) glm::uvec4 tileOffsets;
+    };
+
     struct TileBufferElem
     {
-        uint32_t globalTileIndex;
-        uint32_t tileIndex;
+        alignas(4) uint32_t globalTileIndex;
+        alignas(4) uint32_t tileIndex;
     };
 
     struct InstanceElem
@@ -78,7 +84,7 @@ public:
 
     explicit GrassEngine(Engine& p_Engine) : m_Engine(p_Engine) {}
 
-    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities, ResourceID p_TransferCmdBuffer);
+    void initalize(std::array<uint32_t, 4> p_TileGridSizes, std::array<uint32_t, 4> p_Densities);
     void initializeImgui();
 
     void cleanupImgui();
@@ -91,7 +97,7 @@ public:
     void changeCurrentCenter(glm::ivec2 p_NewCenter, glm::vec2 p_Offset);
     void setDirty() { m_NeedsUpdate = true; }
 
-    bool recompute(VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale, uint32_t p_GraphicsQueueFamilyIndex);
+    bool recompute(VulkanCommandBuffer& p_CmdBuffer, float p_TileSize, float p_GridExtent, float p_HeightmapScale);
     bool recomputeWind(VulkanCommandBuffer& p_CmdBuffer);
     bool recomputeHeight(VulkanCommandBuffer& p_CmdBuffer);
     void render(const VulkanCommandBuffer& p_CmdBuffer);
@@ -100,8 +106,10 @@ public:
 
     bool transferCulling(VulkanCommandBuffer& p_CmdBuffer);
 
-    [[nodiscard]] uint32_t getInstanceCount() const;
-    [[nodiscard]] std::array<uint32_t, 4> getInstanceCounts() const;
+    [[nodiscard]] uint32_t getPreCullInstanceCount() const;
+    [[nodiscard]] std::array<uint32_t, 4> getPreCullInstanceCounts() const;
+    [[nodiscard]] uint32_t getPostCullInstanceCount() const;
+    [[nodiscard]] std::array<uint32_t, 4> getPostCullInstanceCounts() const;
     [[nodiscard]] uint32_t getPreCullTileCount() const;
     [[nodiscard]] std::array<uint32_t,4> getPreCullTileCounts() const;
     [[nodiscard]] uint32_t getPostCullTileCount() const;
@@ -125,19 +133,23 @@ private:
     glm::vec2 m_WindOffset{};
 
     bool m_NeedsUpdate = true;
-    bool m_NeedsRebuild = true;
+    bool m_NeedsInstanceRebuild = true;
+    bool m_NeedsTileRebuild = true;
     bool m_NeedsTransfer = true;
 
     std::vector<uint32_t> m_GlobalTilePositions{};
     std::vector<TileBufferElem> m_TileVisibilityData{};
     std::array<uint32_t, 4> m_PostCullTileCounts{};
 
+    std::array<glm::vec3, 4> m_LODColors{};
+
     float m_CullingMargin = 3.f;
 
     GrassPushConstantData m_PushConstants{};
 
 private:
-    void rebuildResources();
+    void rebuildInstanceResources();
+    void rebuildTileResources();
     void recalculateGlobalTilesIndices();
 
     NoiseEngine::NoiseObject m_HeightNoise{};
@@ -174,6 +186,16 @@ private:
 
     float m_ImguiCullingMargin = 3.f;
 
+    bool m_RandomizeLODColors = false;
+    bool m_CullingEnable = true;
     bool m_CullingUpdate = true;
+
+    //Debug
+    uint32_t m_DebugInstanceBufferSize = 0;
+    uint32_t m_DebugTileBufferSize = 0;
+    uint32_t m_DebugComputeThreads = 0;
+    std::array<uint32_t, 4> m_DebugInstanceCalls;
+    std::array<uint32_t, 4> m_DebugInstanceOffsets;
+    TileBufferHeader m_DebugTileHeader{};
 };
 

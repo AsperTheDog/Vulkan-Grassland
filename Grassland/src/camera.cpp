@@ -114,6 +114,11 @@ glm::mat4& Camera::getVPMatrix()
 	return m_VPMatrix;
 }
 
+void Camera::recalculateFrustum()
+{
+    getFrustum();
+}
+
 void Camera::mouseMoved(const int32_t relX, const int32_t relY)
 {
     if (!m_isMouseCaptured) return;
@@ -302,6 +307,7 @@ bool Camera::isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax)
             return false;
         }
     }
+	return true;
 }
 
 void Camera::setViewDirty()

@@ -30,6 +30,7 @@ public:
 	glm::mat4& getViewMatrix();
 	glm::mat4& getProjMatrix();
 	glm::mat4& getVPMatrix();
+    void recalculateFrustum();
 
 	void mouseMoved(int32_t relX, int32_t relY);
 	void keyPressed(uint32_t key);
@@ -50,7 +51,6 @@ private:
         glm::vec4 planes[6];
         bool frustumDirty = true;
     };
-
     Frustum& getFrustum();
 
 	void calculateRightVector();

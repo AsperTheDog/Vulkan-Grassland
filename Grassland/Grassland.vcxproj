@@ -106,7 +106,7 @@
       <PreprocessorDefinitions>IMGUI_IMPL_VULKAN_USE_VOLK;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(VULKAN_SDK)\Include\Volk;$(SolutionDir)ImGui\submodule;$(SolutionDir)VkPlayground\submodule\include;$(SolutionDir)vendor\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(VULKAN_SDK)\Include\Volk;$(SolutionDir)ImGui\submodule;$(SolutionDir)VkPlayground\submodule\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -123,7 +123,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>IMGUI_IMPL_VULKAN_USE_VOLK;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(VULKAN_SDK)\Include\Volk;$(SolutionDir)ImGui\submodule;$(SolutionDir)VkPlayground\submodule\include;$(SolutionDir)vendor\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(VULKAN_SDK)\Include\Volk;$(SolutionDir)ImGui\submodule;$(SolutionDir)VkPlayground\submodule\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
