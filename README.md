@@ -50,7 +50,7 @@ Every parameter that I could come of can be updated at runtime with ImGui.
 
 # Building
 
-The only dependency needed for the project is the VulkanSDK (With SDL2, Volk and GLM installed) and C++ 20. 
+The only dependency needed for the project is the VulkanSDK (The optional packages SDL2, Volk and GLM must be installed with the SDK) and C++ 20. 
 Right now the only provided project configuration is a visual studio solution. I plan on adding a CMake or Premake configuration in the future but for now if you want to run it in any other way you'll have to configure it yourself.
 
 My personal library for Vulkan (https://github.com/AsperTheDog/VkPlayground) and Dear ImGui (https://github.com/ocornut/imgui) are also used in the project, they are both included in the repository as submodules, so just make sure to clone the repo with `--recursive` 
