@@ -52,3 +52,20 @@ Every parameter that I could come of can be updated at runtime with ImGui.
 
 The only dependency needed for the project is the VulkanSDK (With SDL2, Volk and GLM installed) and C++ 20. 
 Right now the only provided project configuration is a visual studio solution. I plan on adding a CMake or Premake configuration in the future but for now if you want to run it in any other way you'll have to configure it yourself.
+
+# Frame layout
+
+![Untitled Diagram drawio(7)](https://github.com/user-attachments/assets/51066a42-2ed7-405d-9507-64989acf0586)
+
+This could probably be improved by merging submissions together into one command buffer when the hardware allows it, but since most of these steps are rarely performed (only when ImGui parameters are edited or the player changes tiles) I don't think it would make much of a difference.
+I may come back in the future and give it a try.
+
+# Future work
+I am happy with how this looks, and I was able to do what I wanted to do and even go beyond, so I doubt I'll implement any of these. But who knows, if I want to try implementing these things I may just come back and do it here
+- Physically based atmospheric scattering for the skybox
+- Day night cycle
+- Better lighting for the grass
+- Volumetric clouds
+- Optiomized systems to render terrain very far away
+- A river / water rendering
+- More advanced terrain generation for the heightmap
