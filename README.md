@@ -3,6 +3,7 @@ This is my attempt at making an efficient grass renderer with dynamic wind. A pr
 I am incredibly happy with the result, there are of course things that could be added and improved, but I am satisfied for now.
 
 https://github.com/user-attachments/assets/d0db0110-cfd7-46b6-adc9-44769712be68
+
 Scene properties:
 - Hardware: Ryzen 5700X + RTX 3070ti
 - Resolution: 1440p render
