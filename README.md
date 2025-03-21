@@ -55,7 +55,9 @@ Right now the only provided project configuration is a visual studio solution. I
 
 # Frame layout
 
+
 ![Untitled Diagram drawio(7)](https://github.com/user-attachments/assets/51066a42-2ed7-405d-9507-64989acf0586)
+
 
 This could probably be improved by merging submissions together into one command buffer when the hardware allows it, but since most of these steps are rarely performed (only when ImGui parameters are edited or the player changes tiles) I don't think it would make much of a difference.
 I may come back in the future and give it a try.
