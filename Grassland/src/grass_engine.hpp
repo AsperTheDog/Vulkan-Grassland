@@ -63,15 +63,15 @@ public:
     struct GrassPushConstantData
     {
         alignas(16) glm::mat4 vpMatrix;
-        alignas(4) float widthMult = 0.7f;
+        alignas(4) float widthMult;
         alignas(4) float tilt = 0.2f;
-        alignas(4) float bend = 1.f;
+        alignas(4) float bend = 2.f;
         alignas(8) glm::vec2 windDir = {0.f, 1.f};
-        alignas(4) float windStrength = 1.0f;
-        alignas(4) float grassRoundness = 0.7f;
+        alignas(4) float windStrength = 0.8f;
+        alignas(4) float grassRoundness = 0.3f;
         alignas(16) glm::vec3 baseColor = { 0.0112f, 0.082f, 0.0f };
         alignas(16) glm::vec3 tipColor = { 0.25f, 0.6f, 0.0f };
-        alignas(4) float colorRamp = 4.f;
+        alignas(4) float colorRamp = 3.f;
         alignas(16) glm::vec3 cameraPos;
         alignas(16) glm::vec3 lightDir;
 

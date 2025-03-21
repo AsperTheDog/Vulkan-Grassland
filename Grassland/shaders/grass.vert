@@ -39,6 +39,21 @@ mat3 getPositionRotationMatrix(vec3 axis, float angle)
     );
 }
 
+vec3 bezierQuadratic(vec3 p0, vec3 pm, vec3 p1, float t) {
+    float u = 1.0 - t;
+    return u * u * p0 + 2.0 * u * t * pm + t * t * p1;
+}
+
+vec3 bezierCubic(vec3 p0, vec3 p1, vec3 p2, vec3 p3, float t) {
+    float u = 1.0 - t;
+    float uu = u * u;
+    float uuu = uu * u;
+    float tt = t * t;
+    float ttt = tt * t;
+
+    return uuu * p0 + 3.0 * uu * t * p1 + 3.0 * u * tt * p2 + ttt * p3;
+}
+
 void main() {
     vec2 finalVertPos = vertexPosition;
     float xSign = -sign(finalVertPos.x);
@@ -57,14 +72,18 @@ void main() {
     
     mat3 rotation = getPositionRotationMatrix(windAxis, windBendIntensity) 
                   * getPositionRotationMatrix(vec3(0.0, 1.0, 0.0), inInstRotation) 
-                  * getPositionRotationMatrix(vec3(1.0, 0.0, 0.0), localTilt);
+                  * getPositionRotationMatrix(vec3(-1.0, 0.0, 0.0), localTilt);
 
     vec3 windBendPos = rotation * vec3(finalVertPos, 0.0);
 
     vec3 normal = vec3(pc.grassRoundness * xSign, 0.0, 1.0);
+
+    mat3 normalRotation = getPositionRotationMatrix(windAxis, 2 * windBendIntensity) 
+                  * getPositionRotationMatrix(vec3(0.0, 1.0, 0.0), inInstRotation) 
+                  * getPositionRotationMatrix(vec3(-1.0, 0.0, 0.0), 2 * localTilt);
     
     fragPosition = inInstPosition + windBendPos;
-    fragNormal = normalize(rotation * normalize(normal));
+    fragNormal = normalize(normalRotation * normalize(normal));
     fragWeight = weight;
 
     gl_Position = pc.VPMatrix * vec4(fragPosition, 1.0);

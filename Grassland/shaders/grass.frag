@@ -19,12 +19,15 @@ void main()
     vec3 normal = normalize(inNormal);
 
     vec3 color = mix(pc.baseColor, pc.tipColor, pow(inWeight, pc.colorRamp));
+    if (dot(normal, inPosition - pc.cameraPos) > 0.0) {
+        normal = -normal;
+    }
 
     // Specular lighting
     vec3 viewDir = normalize(pc.cameraPos - inPosition);
     vec3 reflectDir = reflect(-pc.lightDir, normal);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    vec3 specular = vec3(0.5) * spec;
+    vec3 specular = vec3(0.2) * spec;
 
-    outColor = vec4(color /*+ specular*/, 1.0);
+    outColor = vec4(color + specular, 1.0);
 }

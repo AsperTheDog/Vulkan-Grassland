@@ -208,7 +208,7 @@ void GrassEngine::initalize(const std::array<uint32_t, 4> p_TileGridSizes, const
         std::array<Vertex, 15> l_BladeVertices;
         for (uint32_t i = 0; i < l_BladeVertices.size() - 1; i += 2)
         {
-            const float l_Weight = static_cast<float>(i) / static_cast<float>(l_BladeVertices.size());
+            const float l_Weight = static_cast<float>(i) / (static_cast<float>(l_BladeVertices.size() - 1));
             const float l_WeightSq = l_Weight * l_Weight;
 
             l_BladeVertices[i].position = glm::vec2(l_Lerp(0.1f, 0.0f, l_WeightSq), -l_Weight);
