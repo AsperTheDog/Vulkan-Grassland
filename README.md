@@ -10,6 +10,11 @@ Scene properties:
 - Grass blades: around 5.000.000 before culling, around 1.800.000 actually rendered
 - Performance: ~300fps
 
+# Controls
+- Move around with WASD. There is no gravity and no collision, so you just fly around in the direction you are looking at
+- Unlock the mouse with the letter Q
+- Toggle ImGui visibility with the letter O
+
 # Features
 ### 100% Procedural
 No imported models or textures — everything is generated at runtime. This was a fun challenge that came up while making it.
@@ -47,6 +52,8 @@ This was incredibly basic, but it served as a good excuse to learn how to use in
 
 ### ImGui Customization
 Every parameter that I could come up with can be updated at runtime with ImGui.
+
+![image](https://github.com/user-attachments/assets/92db6a11-0172-4886-9e1f-982b639e5bd4)
 
 # Building
 
