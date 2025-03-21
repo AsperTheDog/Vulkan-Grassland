@@ -325,7 +325,8 @@ float Engine::getDelta() const
 
 void Engine::update()
 {
-    Engine::drawImgui();
+    if (m_ShowImGui)
+        Engine::drawImgui();
 
     const glm::vec2 l_CameraTile = m_Camera.getTiledPosition(m_PlaneEngine.getTileSize());
     if (l_CameraTile != m_PlaneEngine.getCameraTile())
