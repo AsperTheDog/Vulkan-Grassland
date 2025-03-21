@@ -28,7 +28,7 @@ It features several optimization features to keep frametimes from tanking:
 - The system only calculates things if they must be calculated. This means that most of the data is reused every frame unless recalculation is absolutely necessary. Up to double the fps are obtained in some (ideal) circumstances thanks to this (fear not, however, the improvement is highly noticeable most of the time. You have to go out of your way to negate the benefits of this).
 
 ### Wind Simulation
-A dynamic wind system sways the grass naturally in the breeze. 
+A dynamic wind system sways the grass in a very calming way. 
 What kind of grass renderer would this be if there was no wind to move the grass around??
 
 ### Automatic Terrain Generation
