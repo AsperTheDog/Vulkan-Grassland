@@ -46,7 +46,7 @@ A very simple quadratic fog post-processing effect to tie it all together.
 This was incredibly basic, but it served as a good excuse to learn how to use input attachments in a renderpass.
 
 ### ImGui Customization
-Every parameter that I could come of can be updated at runtime with ImGui.
+Every parameter that I could come up with can be updated at runtime with ImGui.
 
 # Building
 
