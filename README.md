@@ -78,5 +78,5 @@ I am happy with how this looks, and I was able to do what I wanted to do and eve
 - Better lighting for the grass
 - Volumetric clouds
 - Optimized system to render very distant terrain
-- A river / water rendering
+- A river (water rendering :D)
 - More advanced terrain generation for the heightmap
