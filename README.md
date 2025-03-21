@@ -21,7 +21,7 @@ The terrain barely gains anything from the tessellation as it tends to be comple
 ### Mass Grass Instancing
 The meat of the project. The grass is rendered blade per blade by using GPU instancing. The layout is calculated with a GPU compute shader.
 The system is done by dividing the region in tiles. These tiles are the discrete unit that the system uses to determine different properties and to filter when culling.
-It features several o#timization features to keep frametimes from tanking:
+It features several optimization features to keep frametimes from tanking:
 - 4 LOD regions with varying geometry detail and varying density. These are defined as square rings of a determined length.
 - CPU frustum culling per tile. Only updated when needed (if the camera moves). I figured since everything else is done in the GPU (and since GPU culling is incredibly annoying due to how hard it is to have a flexible and scalable scan and compact algorithm for the GPU) I could leave it to the CPU and it'd be good enough (It is, in my opinion, I'm very happy with the result).
 - Everything is calculated with one single GPU compute dispatch. This was specially challenging because tiles of different densities occupy different amounts of space. But I believe I was able to come up with a very efficient system to prevent the tile system from slowing down the rendering process.
