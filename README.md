@@ -77,6 +77,6 @@ I am happy with how this looks, and I was able to do what I wanted to do and eve
 - Day night cycle
 - Better lighting for the grass
 - Volumetric clouds
-- Optiomized systems to render terrain very far away
+- Optimized system to render very distant terrain
 - A river / water rendering
 - More advanced terrain generation for the heightmap
