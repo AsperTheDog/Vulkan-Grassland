@@ -1,6 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
 
+#include "pp_fog_engine.hpp"
+
 class Camera
 {
 public:
@@ -10,7 +12,7 @@ public:
 		glm::mat4 invPVMatrix;
 	};
 
-	Camera(glm::vec3 pos, glm::vec3 dir, float fov = 70.0f, float near = 0.01f, float far = 1000.0f);
+	Camera(glm::vec3 pos, glm::vec3 dir, float fov = 70.0f, float near = 0.1f, float far = 1000.0f);
 
 	void move(glm::vec3 dir);
 	void lookAt(glm::vec3 target);
@@ -34,6 +36,8 @@ public:
 	glm::mat4& getInvProjMatrix();
     glm::mat4& getInvVPMatrix();
     void recalculateFrustum();
+    [[nodiscard]] float getNearPlane() const { return m_near; }
+    [[nodiscard]] float getFarPlane() const { return m_far; }
 
 	void mouseMoved(int32_t relX, int32_t relY);
 	void keyPressed(uint32_t key);

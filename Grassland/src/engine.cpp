@@ -113,20 +113,27 @@ Engine::Engine()
     m_TransferCmdBufferID = l_Device.createCommandBuffer(l_TransferQueueFamily, 0, false);
 
     // Depth Buffer
-    m_DepthBuffer = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_D32_SFLOAT, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0);
-    VulkanImage& l_DepthImage = l_Device.getImage(m_DepthBuffer);
-    l_DepthImage.allocateFromFlags({ .desiredProperties= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, .undesiredProperties= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, .allowUndesired= false});
-    m_DepthBufferView = l_DepthImage.createImageView(VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
+    m_DepthBufferID = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_D32_SFLOAT, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 0);
+    VulkanImage& l_DepthImage = l_Device.getImage(m_DepthBufferID);
+    l_DepthImage.allocateFromFlags({ .desiredProperties= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, .undesiredProperties= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, .allowUndesired= false });
+    m_DepthBufferViewID = l_DepthImage.createImageView(VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    // Color Image
+    m_RenderImageID = l_Device.createImage(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, { l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 0);
+    VulkanImage& l_RenderImage = l_Device.getImage(m_RenderImageID);
+    l_RenderImage.allocateFromFlags({ .desiredProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, .undesiredProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, .allowUndesired = false });
+    m_RenderImageViewID = l_RenderImage.createImageView(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
     l_Device.configureStagingBuffer(100LL * 1024 * 1024, m_TransferQueuePos);
 
     //Descriptor pool
-    std::array<VkDescriptorPoolSize, 3> l_PoolSizes = {
+    std::array<VkDescriptorPoolSize, 4> l_PoolSizes = {
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 2}
     };
-    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 7, 0);
+    m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 8, 0);
 
     // Renderpass and pipelines
     createRenderPasses();
@@ -136,7 +143,11 @@ Engine::Engine()
     for (uint32_t i = 0; i < l_Swapchain.getImageCount(); i++)
     {
         VkImageView l_Color = *l_Swapchain.getImage(i).getImageView(l_Swapchain.getImageView(i));
-        const std::array<VkImageView, 2> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
+        const std::array<VkImageView, 3> l_Attachments = {
+            *l_Device.getImage(m_RenderImageID).getImageView(m_RenderImageViewID),
+            l_Color,
+            *l_Device.getImage(m_DepthBufferID).getImageView(m_DepthBufferViewID)
+        };
         m_FramebufferIDs[i] = VulkanContext::getDevice(m_DeviceID).createFramebuffer({ l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, m_RenderPassID, l_Attachments);
     }
 
@@ -157,6 +168,7 @@ Engine::Engine()
     m_PlaneEngine.initialize();
     m_GrassEngine.initalize({7, 11, 17, 31}, {120, 100, 80, 60});
     m_SkyboxEngine.initialize();
+    m_PPFogEngine.initialize();
 
     initImgui();
     m_NoiseEngine.initializeImgui();
@@ -165,6 +177,7 @@ Engine::Engine()
     m_PlaneEngine.initializeImgui();
     m_GrassEngine.initializeImgui();
     m_SkyboxEngine.initializeImgui();
+    m_PPFogEngine.initializeImgui();
 
     m_Window.toggleMouseCapture();
 
@@ -334,6 +347,7 @@ void Engine::update()
         m_GrassEngine.setDirty();
 
     m_SkyboxEngine.update();
+    m_PPFogEngine.update();
 }
 
 void Engine::createRenderPasses()
@@ -344,26 +358,51 @@ void Engine::createRenderPasses()
     VulkanSwapchainExtension* l_SwapchainExt = VulkanSwapchainExtension::get(m_DeviceID);
     const VkFormat l_Format = l_SwapchainExt->getSwapchain(m_SwapchainID).getFormat().format;
 
+    
     const VkAttachmentDescription l_ColorAttachment = VulkanRenderPassBuilder::createAttachment(l_Format,
-        VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+        VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     l_Builder.addAttachment(l_ColorAttachment);
+    const VkAttachmentDescription l_PresentAttachment = VulkanRenderPassBuilder::createAttachment(l_Format,
+        VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    l_Builder.addAttachment(l_PresentAttachment);
     const VkAttachmentDescription l_DepthAttachment = VulkanRenderPassBuilder::createAttachment(VK_FORMAT_D32_SFLOAT,
         VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     l_Builder.addAttachment(l_DepthAttachment);
 
-    const std::array<VulkanRenderPassBuilder::AttachmentReference, 2> l_ColorReferences = {{{COLOR, 0}, {DEPTH_STENCIL, 1}}};
-    l_Builder.addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, l_ColorReferences, 0);
+    const std::array<VulkanRenderPassBuilder::AttachmentReference, 2> l_RenderReferences = {
+        VulkanRenderPassBuilder::AttachmentReference{COLOR, 0},
+        VulkanRenderPassBuilder::AttachmentReference{DEPTH_STENCIL, 2},
+    };
+    l_Builder.addSubpass(l_RenderReferences, 0);
 
-    VkSubpassDependency l_Dependency{};
-    l_Dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    l_Dependency.dstSubpass = 0;
-    l_Dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    l_Dependency.srcAccessMask = 0;
-    l_Dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    l_Dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    l_Builder.addDependency(l_Dependency);
+    const std::array<VulkanRenderPassBuilder::AttachmentReference, 3> l_PostProcessReferences = {
+        VulkanRenderPassBuilder::AttachmentReference{COLOR, 1},
+        VulkanRenderPassBuilder::AttachmentReference{INPUT, 0},
+        VulkanRenderPassBuilder::AttachmentReference{INPUT, 2},
+    };
+    l_Builder.addSubpass(l_PostProcessReferences, 0);
+
+    VkSubpassDependency l_ExternalDependency{};
+    l_ExternalDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    l_ExternalDependency.dstSubpass = 0;
+    l_ExternalDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    l_ExternalDependency.srcAccessMask = 0;
+    l_ExternalDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    l_ExternalDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    l_Builder.addDependency(l_ExternalDependency);
+
+    VkSubpassDependency l_PostProcessDependency;
+    l_PostProcessDependency.srcSubpass = 0;
+    l_PostProcessDependency.dstSubpass = 1;
+    l_PostProcessDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    l_PostProcessDependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    l_PostProcessDependency.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    l_PostProcessDependency.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    l_PostProcessDependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    l_Builder.addDependency(l_PostProcessDependency);
 
     m_RenderPassID = VulkanContext::getDevice(m_DeviceID).createRenderPass(l_Builder, 0);
     Logger::popContext();
@@ -377,9 +416,9 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
     
     const VkExtent2D& extent = getSwapchain().getExtent();
 
-    std::array<VkClearValue, 2> clearValues;
-    clearValues[0].color = { {0.0f, 1.0f, 1.0f, 1.0f} };
-    clearValues[1].depthStencil = { .depth= 1.0f, .stencil= 0};
+    std::array<VkClearValue, 3> clearValues;
+    clearValues[1].color = clearValues[0].color = { {0.0f, 1.0f, 1.0f, 1.0f} };
+    clearValues[2].depthStencil = { .depth= 1.0f, .stencil= 0};
 
     p_CmdBuffer.beginRecording();
     p_CmdBuffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
@@ -387,6 +426,10 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
     m_SkyboxEngine.render(p_CmdBuffer);
     m_PlaneEngine.render(p_CmdBuffer);
     m_GrassEngine.render(p_CmdBuffer);
+
+    p_CmdBuffer.cmdNextSubpass();
+
+    m_PPFogEngine.render(p_CmdBuffer);
 
     if (p_ImGuiDrawData)
         ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_CmdBuffer);
@@ -528,7 +571,11 @@ void Engine::recreateSwapchain(const VkExtent2D p_NewSize)
     for (uint32_t i = 0; i < l_Swapchain.getImageCount(); ++i)
     {
         const VkImageView l_Color = *l_Swapchain.getImage(i).getImageView(l_Swapchain.getImageView(i));
-        const std::array<VkImageView, 2> l_Attachments = { l_Color, *l_Device.getImage(m_DepthBuffer).getImageView(m_DepthBufferView) };
+        const std::array<VkImageView, 3> l_Attachments = {
+            *l_Device.getImage(m_RenderImageID).getImageView(m_RenderImageViewID),
+            l_Color,
+            *l_Device.getImage(m_DepthBufferID).getImageView(m_DepthBufferViewID)
+        };
         m_FramebufferIDs[i] = VulkanContext::getDevice(m_DeviceID).createFramebuffer({ l_Swapchain.getExtent().width, l_Swapchain.getExtent().height, 1 }, m_RenderPassID, l_Attachments);
     }
     Logger::popContext();
@@ -573,7 +620,7 @@ void Engine::initImgui() const
     l_InitInfo.Queue = *l_Device.getQueue(m_GraphicsQueuePos);
     l_InitInfo.DescriptorPool = *l_Device.getDescriptorPool(l_ImguiPoolID);
     l_InitInfo.RenderPass = *l_Device.getRenderPass(m_RenderPassID);
-    l_InitInfo.Subpass = 0;
+    l_InitInfo.Subpass = 1;
     l_InitInfo.MinImageCount = l_Swapchain.getMinImageCount();
     l_InitInfo.ImageCount = l_Swapchain.getImageCount();
     l_InitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
@@ -621,6 +668,7 @@ void Engine::drawImgui()
     m_GrassEngine.drawImgui();
     m_NoiseEngine.drawImgui();
     m_SkyboxEngine.drawImgui();
+    m_PPFogEngine.drawImgui();
 
     ImGui::Render();
 }

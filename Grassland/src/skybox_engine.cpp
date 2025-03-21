@@ -32,7 +32,7 @@ void SkyboxEngine::initialize()
      
     std::array<VkDynamicState, 2> l_DynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
-    const uint32_t vertexShaderID = l_Device.createShader("shaders/skybox.vert", VK_SHADER_STAGE_VERTEX_BIT, false, {});
+    const uint32_t vertexShaderID = l_Device.createShader("shaders/quad.vert", VK_SHADER_STAGE_VERTEX_BIT, false, {});
     const uint32_t fragmentShaderID = l_Device.createShader("shaders/skybox.frag", VK_SHADER_STAGE_FRAGMENT_BIT, false, {});
 
     VulkanPipelineBuilder l_SkyboxBuilder{l_Device.getID()};

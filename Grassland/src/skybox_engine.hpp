@@ -1,8 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
 
-#include "vulkan_command_buffer.hpp"
 #include "utils/identifiable.hpp"
+class VulkanCommandBuffer;
 class Engine;
 
 class SkyboxEngine

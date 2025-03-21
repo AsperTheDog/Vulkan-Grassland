@@ -5,6 +5,7 @@
 #include "grass_engine.hpp"
 #include "imgui.h"
 #include "plane_engine.hpp"
+#include "pp_fog_engine.hpp"
 #include "sdl_window.hpp"
 #include "skybox_engine.hpp"
 #include "vulkan_queues.hpp"
@@ -34,6 +35,12 @@ public:
     [[nodiscard]] QueueSelection getTransferQueuePos() const { return m_TransferQueuePos; }
     Camera& getCamera() { return m_Camera; }
     NoiseEngine::NoiseObject& getHeightmap() { return m_Heightmap; }
+
+    ResourceID getRenderImage() const { return m_RenderImageID; }
+    ResourceID getRenderImageView() const { return m_RenderImageViewID; }
+    ResourceID getDepthBuffer() const { return m_DepthBufferID; }
+    ResourceID getDepthBufferView() const { return m_DepthBufferViewID; }
+
 
     void setLightDir(float p_Azimuth, float p_Altitude);
     [[nodiscard]] glm::vec3 getLightDir() const;
@@ -73,8 +80,12 @@ private:
     ResourceID m_ComputeCmdBufferID = UINT32_MAX;
     ResourceID m_RenderCmdBufferID = UINT32_MAX;
 
-    ResourceID m_DepthBuffer = UINT32_MAX;
-    ResourceID m_DepthBufferView = UINT32_MAX;
+    ResourceID m_DepthBufferID = UINT32_MAX;
+    ResourceID m_DepthBufferViewID = UINT32_MAX;
+
+    ResourceID m_RenderImageID = UINT32_MAX;
+    ResourceID m_RenderImageViewID = UINT32_MAX;
+
 	std::vector<ResourceID> m_FramebufferIDs{};
 
     ResourceID m_RenderPassID = UINT32_MAX;
@@ -100,6 +111,7 @@ private: // Plane
     GrassEngine m_GrassEngine{ *this };
     NoiseEngine m_NoiseEngine{ *this };
     SkyboxEngine m_SkyboxEngine{ *this };
+    PPFogEngine m_PPFogEngine{ *this };
     
     NoiseEngine::NoiseObject m_Heightmap{};
 
