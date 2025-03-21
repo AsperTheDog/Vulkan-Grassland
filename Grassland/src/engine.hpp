@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "plane_engine.hpp"
 #include "sdl_window.hpp"
+#include "skybox_engine.hpp"
 #include "vulkan_queues.hpp"
 
 class VulkanSwapchain;
@@ -36,6 +37,7 @@ public:
 
     void setLightDir(float p_Azimuth, float p_Altitude);
     [[nodiscard]] glm::vec3 getLightDir() const;
+    [[nodiscard]] float getDelta() const;
 
 private:
     void update();
@@ -97,6 +99,7 @@ private: // Plane
     PlaneEngine m_PlaneEngine{ *this };
     GrassEngine m_GrassEngine{ *this };
     NoiseEngine m_NoiseEngine{ *this };
+    SkyboxEngine m_SkyboxEngine{ *this };
     
     NoiseEngine::NoiseObject m_Heightmap{};
 
@@ -105,12 +108,18 @@ private: // Plane
 
     bool m_MustWaitForGrass = false;
 
+    float m_Delta = 0.f;
+
 private:
     void initImgui() const;
     void drawImgui();
+    
+    void toggleImgui();
 
     float m_LightDirAltitude = 0.f;
     float m_LightDirAzimuth = 0.f;
+
+    bool m_ShowImGui = true;
 
 private:
     friend class PlaneEngine;

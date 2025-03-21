@@ -30,6 +30,9 @@ public:
 	glm::mat4& getViewMatrix();
 	glm::mat4& getProjMatrix();
 	glm::mat4& getVPMatrix();
+	glm::mat4& getInvViewMatrix();
+	glm::mat4& getInvProjMatrix();
+    glm::mat4& getInvVPMatrix();
     void recalculateFrustum();
 
 	void mouseMoved(int32_t relX, int32_t relY);
@@ -69,12 +72,18 @@ private:
     float m_yaw;
     float m_pitch;
 
-	bool m_viewDirty;
+	bool m_viewDirty = true;
 	glm::mat4 m_viewMatrix{};
-	bool m_projDirty;
+	bool m_InvViewDirty = true;
+	glm::mat4 m_invViewMatrix{};
+	bool m_projDirty = true;
 	glm::mat4 m_projMatrix{};
+	bool m_InvProjDirty = true;
+	glm::mat4 m_invProjMatrix{};
 
 	glm::mat4 m_VPMatrix{};
+    bool m_InvVPMatrixDirty = true;
+    glm::mat4 m_InvVPMatrix{};
     Frustum m_Frustum;
 
 	//Event tracker

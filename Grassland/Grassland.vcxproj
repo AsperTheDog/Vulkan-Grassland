@@ -136,6 +136,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\skybox_engine.cpp" />
     <ClCompile Include="src\noise_engine.cpp" />
     <ClCompile Include="src\grass_engine.cpp" />
     <ClCompile Include="src\plane_engine.cpp" />
@@ -145,6 +146,7 @@
     <ClCompile Include="src\sdl_window.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\skybox_engine.hpp" />
     <ClInclude Include="src\noise_engine.hpp" />
     <ClInclude Include="src\grass_engine.hpp" />
     <ClInclude Include="src\plane_engine.hpp" />
@@ -163,6 +165,8 @@
     <None Include="shaders\plane.tesc" />
     <None Include="shaders\plane.tese" />
     <None Include="shaders\plane.vert" />
+    <None Include="shaders\skybox.frag" />
+    <None Include="shaders\skybox.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

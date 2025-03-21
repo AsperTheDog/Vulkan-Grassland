@@ -326,11 +326,11 @@ void GrassEngine::update(const glm::ivec2 p_CameraTile, const float p_HeightmapS
 
     m_PushConstants.windDir = glm::normalize(glm::vec2(glm::sin(m_ImguiWindDirection), glm::cos(m_ImguiWindDirection)));
 
-    m_WindOffset += m_PushConstants.windDir * m_ImguiWindSpeed * ImGui::GetIO().DeltaTime; 
+    m_WindOffset += m_PushConstants.windDir * m_ImguiWindSpeed * m_Engine.getDelta(); 
     m_WindNoise.updateOffset(m_TileOffset + m_WindOffset);
 
     if (m_ImguiWAnimated)
-        m_WindNoise.shiftW(m_ImguiWindWSpeed * ImGui::GetIO().DeltaTime * m_ImguiWindSpeed);
+        m_WindNoise.shiftW(m_ImguiWindWSpeed * m_Engine.getDelta() * m_ImguiWindSpeed);
 
     if (m_Engine.getCamera().isFrustumDirty())
         m_NeedsCullingUpdate = true;

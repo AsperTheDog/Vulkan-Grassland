@@ -12,7 +12,7 @@
 #include <SDL2/SDL_keycode.h>
 
 Camera::Camera(const glm::vec3 pos, const glm::vec3 dir, const float fov, const float near, const float far)
-	: m_Position(pos), m_Front(dir), m_fov(fov), m_near(near), m_far(far), m_viewDirty(true), m_projDirty(true)
+	: m_Position(pos), m_Front(dir), m_fov(fov), m_near(near), m_far(far)
 {
 
 }
@@ -56,7 +56,7 @@ void Camera::setProjectionData(const float fov, const float near, const float fa
 	m_fov = fov;
 	m_near = near;
 	m_far = far;
-	m_projDirty = true;
+    setProjDirty();
 }
 
 glm::vec3 Camera::getPosition() const
@@ -112,6 +112,37 @@ glm::mat4& Camera::getVPMatrix()
 	}
 
 	return m_VPMatrix;
+}
+
+glm::mat4& Camera::getInvViewMatrix()
+{
+    if (m_InvViewDirty)
+    {
+        m_invViewMatrix = glm::inverse(getViewMatrix());
+        m_InvViewDirty = false;
+    }
+    return m_invViewMatrix;
+}
+
+glm::mat4& Camera::getInvProjMatrix()
+{
+    if (m_InvProjDirty)
+    {
+        m_invProjMatrix = glm::inverse(getProjMatrix());
+        m_InvProjDirty = false;
+    }
+    return m_invProjMatrix;
+}
+
+glm::mat4& Camera::getInvVPMatrix()
+{
+    if (m_InvVPMatrixDirty)
+    {
+        m_InvVPMatrix = glm::inverse(getVPMatrix());
+        m_InvVPMatrixDirty = false;
+    }
+
+    return m_InvVPMatrix;
 }
 
 void Camera::recalculateFrustum()
@@ -313,11 +344,16 @@ bool Camera::isBoxInFrustum(const glm::vec3& aabbMin, const glm::vec3& aabbMax)
 void Camera::setViewDirty()
 {
     m_viewDirty = true;
+    m_InvViewDirty = true;
+    m_InvVPMatrixDirty = true;
     m_Frustum.frustumDirty = true;
+        
 }
 
 void Camera::setProjDirty()
 {
     m_projDirty = true;
+    m_InvProjDirty = true;
+    m_InvVPMatrixDirty = true;
     m_Frustum.frustumDirty = true;
 }

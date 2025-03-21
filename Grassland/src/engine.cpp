@@ -18,6 +18,7 @@
 #include "ext/vulkan_swapchain.hpp"
 #include "vulkan_descriptors.hpp"
 #include "utils/logger.hpp"
+#include <chrono>
 
 static VulkanGPU chooseCorrectGPU()
 {
@@ -150,6 +151,25 @@ Engine::Engine()
     m_RenderFenceID = l_Device.createFence(true);
     m_ComputeFenceID = l_Device.createFence(false);
 
+    m_NoiseEngine.initialize();
+    m_Heightmap.initialize(1024, *this, true);
+
+    m_PlaneEngine.initialize();
+    m_GrassEngine.initalize({7, 11, 17, 31}, {120, 100, 80, 60});
+    m_SkyboxEngine.initialize();
+
+    initImgui();
+    m_NoiseEngine.initializeImgui();
+    m_Heightmap.initializeImgui();
+
+    m_PlaneEngine.initializeImgui();
+    m_GrassEngine.initializeImgui();
+    m_SkyboxEngine.initializeImgui();
+
+    m_Window.toggleMouseCapture();
+
+    setLightDir(0.4f, 0.6f);
+
     m_Window.getMouseMovedSignal().connect(&m_Camera, &Camera::mouseMoved);
     m_Window.getKeyPressedSignal().connect(&m_Camera, &Camera::keyPressed);
     m_Window.getKeyReleasedSignal().connect(&m_Camera, &Camera::keyReleased);
@@ -158,22 +178,11 @@ Engine::Engine()
     m_Window.getResizedSignal().connect(this, &Engine::recreateSwapchain);
     m_Window.getMouseScrolledSignal().connect(&m_Camera, &Camera::mouseScrolled);
 
-    m_NoiseEngine.initialize();
-    m_Heightmap.initialize(1024, *this, true);
-
-    m_PlaneEngine.initialize();
-    m_GrassEngine.initalize({7, 11, 17, 31}, {120, 100, 80, 60});
-
-    initImgui();
-    m_NoiseEngine.initializeImgui();
-    m_Heightmap.initializeImgui();
-
-    m_PlaneEngine.initializeImgui();
-    m_GrassEngine.initializeImgui();
-
-    m_Window.toggleMouseCapture();
-
-    setLightDir(0.4f, 0.6f);
+    m_Window.getKeyPressedSignal().connect([this](const uint32_t p_Key)
+        {
+            if (p_Key == SDLK_o)
+                toggleImgui();
+        });
 }
 
 Engine::~Engine()
@@ -203,6 +212,8 @@ void Engine::run()
 
     VulkanFence& l_RenderFence = l_Device.getFence(m_RenderFenceID);
     VulkanFence& l_ComputeFence = l_Device.getFence(m_ComputeFenceID);
+
+    std::chrono::high_resolution_clock::time_point l_Frame = std::chrono::high_resolution_clock::now();
 
     m_CurrentFrame = 0;
     while (!m_Window.shouldClose())
@@ -240,10 +251,14 @@ void Engine::run()
         if (l_ImageIndex == UINT32_MAX)
             continue;
 
-        ImDrawData* l_ImguiDrawData = ImGui::GetDrawData();
+        ImDrawData* l_ImguiDrawData = nullptr;
+        if (m_ShowImGui)
+        {
+            l_ImguiDrawData = ImGui::GetDrawData();
 
-        if (l_ImguiDrawData->DisplaySize.x <= 0.0f || l_ImguiDrawData->DisplaySize.y <= 0.0f)
-            continue;
+            if (l_ImguiDrawData->DisplaySize.x <= 0.0f || l_ImguiDrawData->DisplaySize.y <= 0.0f)
+                continue;
+        }
 
         // Render
         render(l_ImageIndex, l_ImguiDrawData, l_Swapchain.getImgSemaphore(), l_RenderedHeightmap, l_ComputedGrass, l_RenderedWind);
@@ -256,6 +271,9 @@ void Engine::run()
 
         VulkanContext::resetTransMemory();
         m_CurrentFrame++;
+        std::chrono::high_resolution_clock::time_point l_Prev = l_Frame;
+        l_Frame = std::chrono::high_resolution_clock::now();
+        m_Delta = std::chrono::duration<float>(l_Frame - l_Prev).count();
     }
 }
 
@@ -287,6 +305,11 @@ glm::vec3 Engine::getLightDir() const
     return m_LightDir;
 }
 
+float Engine::getDelta() const
+{
+    return m_Delta;
+}
+
 void Engine::update()
 {
     Engine::drawImgui();
@@ -309,6 +332,8 @@ void Engine::update()
 
     if (m_Heightmap.isDirty())
         m_GrassEngine.setDirty();
+
+    m_SkyboxEngine.update();
 }
 
 void Engine::createRenderPasses()
@@ -353,16 +378,18 @@ void Engine::render(const uint32_t l_ImageIndex, ImDrawData* p_ImGuiDrawData, co
     const VkExtent2D& extent = getSwapchain().getExtent();
 
     std::array<VkClearValue, 2> clearValues;
-    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+    clearValues[0].color = { {0.0f, 1.0f, 1.0f, 1.0f} };
     clearValues[1].depthStencil = { .depth= 1.0f, .stencil= 0};
 
     p_CmdBuffer.beginRecording();
     p_CmdBuffer.cmdBeginRenderPass(m_RenderPassID, m_FramebufferIDs[l_ImageIndex], extent, clearValues);
 
+    m_SkyboxEngine.render(p_CmdBuffer);
     m_PlaneEngine.render(p_CmdBuffer);
     m_GrassEngine.render(p_CmdBuffer);
 
-    ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_CmdBuffer);
+    if (p_ImGuiDrawData)
+        ImGui_ImplVulkan_RenderDrawData(p_ImGuiDrawData, *p_CmdBuffer);
 
     p_CmdBuffer.cmdEndRenderPass();
     p_CmdBuffer.endRecording();
@@ -555,6 +582,9 @@ void Engine::initImgui() const
 
 void Engine::drawImgui()
 {
+    if (!m_ShowImGui)
+        return;
+
     ImGui_ImplVulkan_NewFrame();
     m_Window.frameImgui();
     ImGui::NewFrame();
@@ -590,6 +620,12 @@ void Engine::drawImgui()
     m_PlaneEngine.drawImgui();
     m_GrassEngine.drawImgui();
     m_NoiseEngine.drawImgui();
+    m_SkyboxEngine.drawImgui();
 
     ImGui::Render();
+}
+
+void Engine::toggleImgui()
+{
+    m_ShowImGui = !m_ShowImGui;
 }

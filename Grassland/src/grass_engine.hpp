@@ -185,7 +185,7 @@ private:
     float m_ImguiWindSpeed = 0.04f;
 
     bool m_ImguiWAnimated = true;
-    float m_ImguiWindWSpeed = 0.6f;
+    float m_ImguiWindWSpeed = 15.f;
 
     float m_ImguiCullingMargin = 3.f;
 
