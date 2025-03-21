@@ -173,7 +173,7 @@ Engine::Engine()
 
     m_Window.toggleMouseCapture();
 
-    setLightDir(0.f, 0.5f);
+    setLightDir(0.4f, 0.6f);
 }
 
 Engine::~Engine()
