@@ -35,7 +35,9 @@ static VulkanGPU chooseCorrectGPU()
             continue;
         }
 
-        l_Selected = l_GPUs[i];
+        // Prioritize discrete GPUs
+        if (l_GPUs[i].getProperties().deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || l_Selected.getHandle() == VK_NULL_HANDLE)
+            l_Selected = l_GPUs[i];
     }
 
     if (l_Selected.getHandle() != VK_NULL_HANDLE)
