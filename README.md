@@ -10,6 +10,11 @@ Scene properties:
 - Grass blades: around 5.000.000 before culling, around 1.800.000 actually rendered
 - Performance: ~300fps
 
+# Controls
+- Move around with WASD. There is no gravity and no collision, so you just fly around in the direction you are looking at
+- Unlock the mouse with the letter Q
+- Toggle ImGui visibility with the letter O
+
 # Features
 ### 100% Procedural
 No imported models or textures — everything is generated at runtime. This was a fun challenge that came up while making it.
@@ -21,14 +26,14 @@ The terrain barely gains anything from the tessellation as it tends to be comple
 ### Mass Grass Instancing
 The meat of the project. The grass is rendered blade per blade by using GPU instancing. The layout is calculated with a GPU compute shader.
 The system is done by dividing the region in tiles. These tiles are the discrete unit that the system uses to determine different properties and to filter when culling.
-It features several o#timization features to keep frametimes from tanking:
+It features several optimization features to keep frametimes from tanking:
 - 4 LOD regions with varying geometry detail and varying density. These are defined as square rings of a determined length.
 - CPU frustum culling per tile. Only updated when needed (if the camera moves). I figured since everything else is done in the GPU (and since GPU culling is incredibly annoying due to how hard it is to have a flexible and scalable scan and compact algorithm for the GPU) I could leave it to the CPU and it'd be good enough (It is, in my opinion, I'm very happy with the result).
 - Everything is calculated with one single GPU compute dispatch. This was specially challenging because tiles of different densities occupy different amounts of space. But I believe I was able to come up with a very efficient system to prevent the tile system from slowing down the rendering process.
 - The system only calculates things if they must be calculated. This means that most of the data is reused every frame unless recalculation is absolutely necessary. Up to double the fps are obtained in some (ideal) circumstances thanks to this (fear not, however, the improvement is highly noticeable most of the time. You have to go out of your way to negate the benefits of this).
 
 ### Wind Simulation
-A dynamic wind system sways the grass naturally in the breeze. 
+A dynamic wind system sways the grass in a very calming way. 
 What kind of grass renderer would this be if there was no wind to move the grass around??
 
 ### Automatic Terrain Generation
@@ -46,14 +51,16 @@ A very simple quadratic fog post-processing effect to tie it all together.
 This was incredibly basic, but it served as a good excuse to learn how to use input attachments in a renderpass.
 
 ### ImGui Customization
-Every parameter that I could come of can be updated at runtime with ImGui.
+Every parameter that I could come up with can be updated at runtime with ImGui.
+
+![image](https://github.com/user-attachments/assets/92db6a11-0172-4886-9e1f-982b639e5bd4)
 
 # Building
 
-The only dependency needed for the project is the VulkanSDK (With SDL2, Volk and GLM installed) and C++ 20. 
-Right now the only provided project configuration is a visual studio solution. I plan on adding a CMake or Premake configuration in the future but for now if you want to run it in any other way you'll have to configure it yourself.
+The only dependency needed for the project is the VulkanSDK (The optional packages SDL2, Volk and GLM must be installed with the SDK) and C++ 20.
+Right now the only provided project configuration is a visual studio solution. I plan on adding a CMake/Premake/Scons configuration in the future but for now if you want to run it in any other way you'll have to configure it yourself.
 
-My personal library for Vulkan (https://github.com/AsperTheDog/VkPlayground) and Dear ImGui (https://github.com/ocornut/imgui) are also used in the project, they are both included in the repository as submodules, so just make sure to clone the repo with `--recursive` 
+My [personal library for Vulkan](https://github.com/AsperTheDog/VkPlayground) and [Dear ImGui](https://github.com/ocornut/imgui) are also used in the project, they are both included in the repository as submodules, so just make sure to clone the repo with `--recursive` 
 
 # Frame layout
 
@@ -70,6 +77,6 @@ I am happy with how this looks, and I was able to do what I wanted to do and eve
 - Day night cycle
 - Better lighting for the grass
 - Volumetric clouds
-- Optiomized systems to render terrain very far away
-- A river / water rendering
+- Optimized system to render very distant terrain
+- A river (water rendering :D)
 - More advanced terrain generation for the heightmap
