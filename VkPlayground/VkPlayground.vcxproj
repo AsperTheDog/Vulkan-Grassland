@@ -175,6 +175,7 @@
     <ClCompile Include="submodule\src\ext\vulkan_shader_clock.cpp" />
     <ClCompile Include="submodule\src\ext\vulkan_swapchain.cpp" />
     <ClCompile Include="submodule\src\logger.cpp" />
+    <ClCompile Include="submodule\src\volk_loader.cpp" />
     <ClCompile Include="submodule\src\vulkan_binding.cpp" />
     <ClCompile Include="submodule\src\vulkan_buffer.cpp" />
     <ClCompile Include="submodule\src\vulkan_command_buffer.cpp" />

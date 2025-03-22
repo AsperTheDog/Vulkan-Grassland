@@ -1,6 +1,5 @@
 #pragma once
 #include <SDL2/SDL_vulkan.h>
-#include <vector>
 #include <SDL2/SDL_keycode.h>
 #include <Volk/volk.h>
 

@@ -164,5 +164,8 @@
     <ClCompile Include="submodule\src\allocators.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="submodule\src\volk_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

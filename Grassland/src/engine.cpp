@@ -130,7 +130,7 @@ Engine::Engine()
     std::array<VkDescriptorPoolSize, 4> l_PoolSizes = {
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 2}
     };
     m_DescriptorPoolID = l_Device.createDescriptorPool(l_PoolSizes, 8, 0);

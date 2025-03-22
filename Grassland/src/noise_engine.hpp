@@ -1,7 +1,6 @@
 #pragma once
 #include <__msvc_string_view.hpp>
 #include <glm/glm.hpp>
-#include <Volk/volk.h>
 
 #include "vulkan_queues.hpp"
 #include "utils/identifiable.hpp"
